@@ -50,12 +50,40 @@ class OpenRouterLLM(BaseLLM):
             stream=True,
         )
 
+        finish_reason: str | None = None
+        usage: TokenUsage | None = None
+
         async for chunk in response:
-            yield chunk
+            # usage only available in the last chunk
+            if hasattr(chunk, "usage") and chunk.usage:
+                usage = TokenUsage(
+                    prompt_tokens=chunk.usage.prompt_tokens,
+                    completion_tokens=chunk.usage.completion_tokens,
+                    total_tokens=chunk.usage.total_tokens,
+                    cached_tokens=chunk.usage.prompt_tokens_details.cached_tokens,
+                )
+            
+            if not chunk.choices:
+                continue
+
+            choice = chunk.choices[0]
+            
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason   
+        
+            if choice.delta.content:
+                yield StreamEvent(
+                    type=EventType.TextDelta,
+                    text_delta=TextDelta(text=choice.delta.content),
+                )
+        
+        yield StreamEvent(
+            type=EventType.Done,
+            finish_reason=finish_reason,
+            usage=usage,
+        )
 
 
-
-    
     async def _generate_non_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> StreamEvent:
         response = await client.chat.completions.create(
             model=kwargs["model"],
