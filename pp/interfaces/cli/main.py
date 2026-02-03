@@ -5,7 +5,7 @@ from pp.domain.llm import LLMConfig
 
 async def main():
     cfg = LLMConfig(
-        
+     
     )
     llm = OpenRouterLLM(cfg)
 
@@ -14,7 +14,7 @@ async def main():
     ]
     async for event in llm.generate(
         messages=messages,
-        stream=True,
+        stream=False,
     ):
         print(event)
 

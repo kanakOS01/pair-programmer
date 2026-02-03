@@ -1,3 +1,7 @@
+from openai import APIError
+from openai import APIConnectionError
+import asyncio
+from openai import RateLimitError
 from typing import override, Any, AsyncGenerator
 
 from openai import AsyncOpenAI
@@ -36,12 +40,44 @@ class OpenRouterLLM(BaseLLM):
             "model": self.cfg.model,
             "messages": messages,
         }
-        if stream:
-            async for event in self._generate_stream(client, kwargs):
-                yield event
-        else:
-            yield await self._generate_non_stream(client, kwargs)
-    
+
+        for attempt in range(self._retries):
+            try:
+                if stream:
+                    async for event in self._generate_stream(client, kwargs):
+                        yield event
+                else:
+                    yield await self._generate_non_stream(client, kwargs)
+                
+                return
+        
+            except RateLimitError as rle:
+                if attempt == self._retries - 1:
+                    yield StreamEvent(
+                        type=EventType.Error,
+                        error=f"Rate limit exceeded. {rle}",
+                    )
+                    return
+                await asyncio.sleep(2 ** attempt)
+            
+            except APIConnectionError as ace:
+                if attempt == self._retries - 1:
+                    yield StreamEvent(
+                        type=EventType.Error,
+                        error=f"API connection error. {ace}",
+                    )
+                    return
+                await asyncio.sleep(2 ** attempt)
+            
+            except APIError as ae:
+                if attempt == self._retries - 1:
+                    yield StreamEvent(
+                        type=EventType.Error,
+                        error=f"Error decoding response. {ae}",
+                    )
+                    return
+                await asyncio.sleep(2 ** attempt)
+
 
     async def _generate_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> AsyncGenerator[StreamEvent, None]:
         response = await client.chat.completions.create(

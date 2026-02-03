@@ -8,6 +8,7 @@ from pp.domain.llm import LLMConfig, StreamEvent
 class BaseLLM(ABC):
     def __init__(self, cfg: LLMConfig) -> None:
         self.cfg = cfg
+        self._retries = cfg.retries or 3
 
     
     @abstractmethod

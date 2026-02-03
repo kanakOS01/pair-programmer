@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -8,6 +9,7 @@ class LLMConfig:
     model: str
     api_key: str
     base_url: str
+    retries: Optional[int] = 3
 
 
 @dataclass
