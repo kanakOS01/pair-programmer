@@ -13,7 +13,7 @@ class LLMConfig:
 
 
 @dataclass
-class EventType(str, Enum):
+class LLMEventType(str, Enum):
     TextDelta = "text_delta"
     Error = "error"
     Done = "done"
@@ -45,8 +45,31 @@ class TokenUsage:
 
 @dataclass
 class StreamEvent:
-    type: EventType
+    type: LLMEventType
     text_delta: TextDelta | None = None
     error: str | None = None
     finish_reason: str | None = None
     usage: TokenUsage | None = None
+
+    @classmethod
+    def stream_error(cls, error: str) -> StreamEvent:
+        return StreamEvent(
+            type=LLMEventType.Error,
+            error=error,
+        )
+
+    @classmethod
+    def stream_done(cls, finish_reason: str | None, usage: TokenUsage | None, text_delta: TextDelta | None = None) -> StreamEvent:
+        return StreamEvent(
+            type=LLMEventType.Done,
+            finish_reason=finish_reason,
+            usage=usage,
+            text_delta=text_delta
+        )
+
+    @classmethod
+    def stream_text_delta(cls, text_delta: TextDelta) -> StreamEvent:
+        return StreamEvent(
+            type=LLMEventType.TextDelta,
+            text_delta=text_delta,
+        )

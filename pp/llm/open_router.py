@@ -6,7 +6,7 @@ from typing import override, Any, AsyncGenerator
 
 from openai import AsyncOpenAI
 
-from pp.domain.llm import LLMConfig, TextDelta, TokenUsage, EventType, StreamEvent
+from pp.domain.llm import LLMConfig, TextDelta, TokenUsage, LLMEventType, StreamEvent
 from pp.llm.base import BaseLLM
 
 
@@ -53,28 +53,19 @@ class OpenRouterLLM(BaseLLM):
         
             except RateLimitError as rle:
                 if attempt == self._retries - 1:
-                    yield StreamEvent(
-                        type=EventType.Error,
-                        error=f"Rate limit exceeded. {rle}",
-                    )
+                    yield StreamEvent.stream_error(error=f"Rate limit exceeded. {rle}")
                     return
                 await asyncio.sleep(2 ** attempt)
             
             except APIConnectionError as ace:
                 if attempt == self._retries - 1:
-                    yield StreamEvent(
-                        type=EventType.Error,
-                        error=f"API connection error. {ace}",
-                    )
+                    yield StreamEvent.stream_error(error=f"API connection error. {ace}")
                     return
                 await asyncio.sleep(2 ** attempt)
             
             except APIError as ae:
                 if attempt == self._retries - 1:
-                    yield StreamEvent(
-                        type=EventType.Error,
-                        error=f"Error decoding response. {ae}",
-                    )
+                    yield StreamEvent.stream_error(error=f"Error decoding response. {ae}")
                     return
                 await asyncio.sleep(2 ** attempt)
 
@@ -108,16 +99,9 @@ class OpenRouterLLM(BaseLLM):
                 finish_reason = choice.finish_reason   
         
             if choice.delta.content:
-                yield StreamEvent(
-                    type=EventType.TextDelta,
-                    text_delta=TextDelta(text=choice.delta.content),
-                )
+                yield StreamEvent.stream_text_delta(text_delta=TextDelta(text=choice.delta.content))
         
-        yield StreamEvent(
-            type=EventType.Done,
-            finish_reason=finish_reason,
-            usage=usage,
-        )
+        yield StreamEvent.stream_done(finish_reason=finish_reason, usage=usage)
 
 
     async def _generate_non_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> StreamEvent:
@@ -141,10 +125,4 @@ class OpenRouterLLM(BaseLLM):
             cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
         )
 
-        return StreamEvent(
-            type=EventType.Done,
-            text_delta=text_delta,
-            usage=usage,
-            finish_reason=choice.finish_reason
-        )
-        
+        return StreamEvent.stream_done(finish_reason=choice.finish_reason, usage=usage, text_delta=text_delta)
