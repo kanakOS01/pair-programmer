@@ -1,21 +1,34 @@
+from pp.domain import AgentEventType
+from pp.agents import CodingAgent
 import asyncio
 from functools import wraps
 
 import typer
-
-from pp.llm import OpenRouterLLM
-from pp.domain.llm import LLMConfig
 
 app = typer.Typer()
 
 
 class CLI:
     def __init__(self) -> None:
-        pass
+        self.coding_agent: CodingAgent | None = None
+
 
     
-    def run_single(self, prompt: str):
-        pass
+    async def run_once(self, prompt: str):
+        async with CodingAgent() as agent:
+            self.coding_agent = agent
+
+            await self._process_message(prompt)            
+
+
+    async def _process_message(self, message: str) -> str | None:
+        if not self.coding_agent:
+            return None
+        
+        async for event in self.coding_agent.run(message):
+            if event.type == AgentEventType.TextDelta:
+                content = event.data.get("content", "")
+
 
 
 def coro(f):
@@ -32,19 +45,10 @@ async def main(prompt: str = ""):
     """
     Entrypoint of pp (pair-programmer) CLI
     """
-    cfg = LLMConfig(
-        
-    )
-    llm = OpenRouterLLM(cfg)
-
-    messages = [
-        {"role": "user", "content": "Hello, how are you?"},
-    ]
-    async for event in llm.generate(
-        messages=messages,
-        stream=False,
-    ):
-        print(event)
+    cli = CLI()
+    messages = [{"role": "user", "content": prompt}]
+    if prompt:
+        await cli.run_once(prompt)
 
 
 if __name__ == "__main__":

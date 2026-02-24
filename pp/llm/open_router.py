@@ -6,8 +6,8 @@ from typing import override, Any, AsyncGenerator
 
 from openai import AsyncOpenAI
 
-from pp.domain.llm import LLMConfig, TextDelta, TokenUsage, LLMEventType, StreamEvent
-from pp.llm.base import BaseLLM
+from pp.domain import LLMConfig, LLMEvent, TokenUsage, TextDelta
+from pp.llm import BaseLLM
 
 
 class OpenRouterLLM(BaseLLM):
@@ -34,7 +34,7 @@ class OpenRouterLLM(BaseLLM):
 
 
     @override
-    async def generate(self, messages: list[dict[str, Any]], stream: bool = True) -> AsyncGenerator[StreamEvent, None]:
+    async def generate(self, messages: list[dict[str, Any]], stream: bool = True) -> AsyncGenerator[LLMEvent, None]:
         client = self.get_client()
         kwargs = {
             "model": self.cfg.model,
@@ -53,24 +53,24 @@ class OpenRouterLLM(BaseLLM):
         
             except RateLimitError as rle:
                 if attempt == self._retries - 1:
-                    yield StreamEvent.stream_error(error=f"Rate limit exceeded. {rle}")
+                    yield LLMEvent.stream_error(error=f"Rate limit exceeded. {rle}")
                     return
                 await asyncio.sleep(2 ** attempt)
             
             except APIConnectionError as ace:
                 if attempt == self._retries - 1:
-                    yield StreamEvent.stream_error(error=f"API connection error. {ace}")
+                    yield LLMEvent.stream_error(error=f"API connection error. {ace}")
                     return
                 await asyncio.sleep(2 ** attempt)
             
             except APIError as ae:
                 if attempt == self._retries - 1:
-                    yield StreamEvent.stream_error(error=f"Error decoding response. {ae}")
+                    yield LLMEvent.stream_error(error=f"Error decoding response. {ae}")
                     return
                 await asyncio.sleep(2 ** attempt)
 
 
-    async def _generate_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> AsyncGenerator[StreamEvent, None]:
+    async def _generate_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> AsyncGenerator[LLMEvent, None]:
         response = await client.chat.completions.create(
             model=kwargs["model"],
             messages=kwargs["messages"],
@@ -99,12 +99,12 @@ class OpenRouterLLM(BaseLLM):
                 finish_reason = choice.finish_reason   
         
             if choice.delta.content:
-                yield StreamEvent.stream_text_delta(text_delta=TextDelta(text=choice.delta.content))
+                yield LLMEvent.stream_text_delta(text_delta=TextDelta(text=choice.delta.content))
         
-        yield StreamEvent.stream_done(finish_reason=finish_reason, usage=usage)
+        yield LLMEvent.stream_done(finish_reason=finish_reason, usage=usage)
 
 
-    async def _generate_non_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> StreamEvent:
+    async def _generate_non_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> LLMEvent:
         response = await client.chat.completions.create(
             model=kwargs["model"],
             messages=kwargs["messages"],
@@ -125,4 +125,4 @@ class OpenRouterLLM(BaseLLM):
             cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
         )
 
-        return StreamEvent.stream_done(finish_reason=choice.finish_reason, usage=usage, text_delta=text_delta)
+        return LLMEvent.stream_done(finish_reason=choice.finish_reason, usage=usage, text_delta=text_delta)
