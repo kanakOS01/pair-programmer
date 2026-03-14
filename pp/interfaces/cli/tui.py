@@ -1,3 +1,4 @@
+from rich.syntax import Syntax
 from rich.theme import Theme
 from rich.console import Console
 
@@ -30,3 +31,32 @@ class TUI:
 
     def stream_end(self) -> None:
         ...
+    
+
+    def status(self, message: str) -> None:
+        ...
+    
+
+    def system(self, message: str) -> None:
+        ...
+
+    
+    def error(self, message: str) -> None:
+        ...
+    
+
+    def header(self, message: str) -> None:
+        ...
+    
+
+    def table(self) -> None:
+        ...
+    
+
+    def prompt(self, message: str) -> None:
+        ...
+    
+
+    def code(self, code: str, language: str = "python") -> None:
+        syntax = Syntax(code, language)
+        self.console.print(syntax)
