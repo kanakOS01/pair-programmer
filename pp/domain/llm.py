@@ -14,7 +14,6 @@ class LLMConfig:
     retries: Optional[int] = 3
 
 
-@dataclass
 class LLMEventType(str, Enum):
     TextDelta = "text_delta"
     Error = "error"

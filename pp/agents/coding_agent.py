@@ -1,6 +1,5 @@
 from __future__ import annotations
 from typing import AsyncGenerator
-from typing import Any
 
 from pp.agents import BaseAgent
 from pp.domain import LLMConfig, AgentEvent, LLMEventType, AgentEventType
@@ -11,7 +10,10 @@ class CodingAgent(BaseAgent):
     def __init__(self) -> None:
         self.llm = OpenRouterLLM(
             cfg=LLMConfig(
+                model="stepfun/step-3.5-flash:free",
+                base_url="https://openrouter.ai/api/v1",
                 
+                retries=2,
             ),
         )
 
@@ -24,8 +26,8 @@ class CodingAgent(BaseAgent):
         if self.llm:
             await self.llm.close()
 
-    
-    async def run(self, prompt: str) -> Any:
+
+    async def run(self, prompt: str) -> AsyncGenerator[AgentEvent]:
         yield AgentEvent.agent_start(message=prompt)
 
         final_response = None

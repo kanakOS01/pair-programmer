@@ -15,3 +15,18 @@ def get_console(theme: Theme | None = None) -> Console:
     return _console
 
 
+class TUI:
+    def __init__(self, console: Console | None = None):
+        self.console = console or get_console()
+
+
+    def stream_start(self) -> None:
+        ...
+
+
+    def stream_delta(self, content: str) -> None:
+        self.console.print(content, end="", markup=False)
+
+
+    def stream_end(self) -> None:
+        ...

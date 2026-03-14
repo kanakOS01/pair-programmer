@@ -6,7 +6,6 @@ from typing import Any
 from pp.domain.shared import TokenUsage
 
 
-@dataclass
 class AgentEventType(str, Enum):
     # lifecycle
     Start = "start"

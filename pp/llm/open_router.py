@@ -87,7 +87,11 @@ class OpenRouterLLM(BaseLLM):
                     prompt_tokens=chunk.usage.prompt_tokens,
                     completion_tokens=chunk.usage.completion_tokens,
                     total_tokens=chunk.usage.total_tokens,
-                    cached_tokens=chunk.usage.prompt_tokens_details.cached_tokens,
+                    cached_tokens=(
+                        chunk.usage.prompt_tokens_details.cached_tokens or 0
+                        if chunk.usage.prompt_tokens_details
+                        else 0
+                    ),
                 )
             
             if not chunk.choices:
