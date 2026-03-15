@@ -30,10 +30,30 @@ class CLI:
         if not self.coding_agent:
             return None
         
+        assistant_streaming = False
+
         async for event in self.coding_agent.run(message):
             if event.type == AgentEventType.TextDelta:
+                if not assistant_streaming:
+                    self.tui.stream_start()
+                    assistant_streaming = True
+
                 content = event.data.get("content", "")
                 self.tui.stream_delta(content)
+            
+            elif event.type == AgentEventType.TextComplete:
+                final_response = event.data.get("content", "")
+                if assistant_streaming:
+                    self.tui.stream_end()
+                    assistant_streaming = False
+
+                return final_response
+            
+            elif event.type == AgentEventType.Error:
+                error = event.data.get("error", "Unkown error")
+                self.tui.error(error)
+
+                
 
 
 def coro(f):
@@ -55,9 +75,7 @@ async def main(prompt: str = ""):
     if prompt:
         res = await cli.run_once(prompt)
         if res is None:
-            console.print("[error]Failed to run agent[/error]")
             sys.exit(1)
-        console.print(f"[success]Agent response:[/success] {res}")
 
 
 if __name__ == "__main__":

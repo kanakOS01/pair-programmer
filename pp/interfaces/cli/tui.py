@@ -1,4 +1,7 @@
+from rich.panel import Panel
+from rich.rule import Rule
 from rich.syntax import Syntax
+from rich.text import Text
 from rich.theme import Theme
 from rich.console import Console
 
@@ -19,10 +22,13 @@ def get_console(theme: Theme | None = None) -> Console:
 class TUI:
     def __init__(self, console: Console | None = None):
         self.console = console or get_console()
+        self._assistant_stream_enabled = False
 
 
     def stream_start(self) -> None:
-        ...
+        self.console.print()
+        self.console.print(Rule(Text("Assistant", style="assistant"), style="assistant"))
+        self._assistant_stream_enabled = True
 
 
     def stream_delta(self, content: str) -> None:
@@ -30,7 +36,11 @@ class TUI:
 
 
     def stream_end(self) -> None:
-        ...
+        if self._assistant_stream_enabled:
+            self.console.print()
+
+
+        self._assistant_stream_enabled = False
     
 
     def status(self, message: str) -> None:
@@ -41,8 +51,9 @@ class TUI:
         ...
 
     
-    def error(self, message: str) -> None:
-        ...
+    def error(self, error: str) -> None:
+        self.console.print()
+        self.console.print(Panel(error, style="error"))
     
 
     def header(self, message: str) -> None:

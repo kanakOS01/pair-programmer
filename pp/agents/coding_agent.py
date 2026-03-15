@@ -26,7 +26,7 @@ class CodingAgent(BaseAgent):
         if self.llm:
             await self.llm.close()
 
-
+    
     async def run(self, prompt: str) -> AsyncGenerator[AgentEvent]:
         yield AgentEvent.agent_start(message=prompt)
 
