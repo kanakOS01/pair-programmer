@@ -1,6 +1,6 @@
 from typing import Any
 
-from pp.domain.message import Message
+from pp.domain import Message
 from pp.prompts.system import get_system_prompt
 from pp.utils.text import count_tokens
 
