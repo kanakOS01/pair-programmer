@@ -1,7 +1,8 @@
 from __future__ import annotations
-from typing import Optional
+
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 from pp.domain.shared import TextDelta, TokenUsage
 
@@ -37,12 +38,7 @@ class LLMEvent:
 
     @classmethod
     def stream_done(cls, finish_reason: str | None, usage: TokenUsage | None, text_delta: TextDelta | None = None) -> LLMEvent:
-        return LLMEvent(
-            type=LLMEventType.Done,
-            finish_reason=finish_reason,
-            usage=usage,
-            text_delta=text_delta
-        )
+        return LLMEvent(type=LLMEventType.Done, finish_reason=finish_reason, usage=usage, text_delta=text_delta)
 
     @classmethod
     def stream_text_delta(cls, text_delta: TextDelta) -> LLMEvent:

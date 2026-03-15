@@ -1,3 +1,4 @@
+# ruff: noqa
 from datetime import datetime
 import platform
 # from config.config import Config

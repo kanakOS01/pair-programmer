@@ -8,3 +8,22 @@ dependencies = [
     "openai>=2.15.0",
     "typer>=0.21.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "ruff>=0.15.6",
+]
+
+[tool.ruff]
+line-length = 130
+target-version = "py313"
+
+[tool.ruff.lint]
+# Core linter rules - most important ones for code quality
+select = ["E", "F", "I", "B"]  # pycodestyle, Pyflakes, isort, bugbear
+ignore = ["F841", "F403", "E402", "B026", "F405", "E101", "B008", "B905", "B006"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

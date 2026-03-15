@@ -1,6 +1,7 @@
 from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-from dataclasses import dataclass, field, asdict
 from typing import Any
 
 from pp.domain.shared import TokenUsage
@@ -11,7 +12,7 @@ class AgentEventType(str, Enum):
     Start = "start"
     Done = "done"
     Error = "error"
-    
+
     # streaming
     TextDelta = "text_delta"
     TextComplete = "text_complete"
@@ -28,7 +29,7 @@ class AgentEvent:
             type=AgentEventType.Start,
             data={"message": message},
         )
-    
+
     @classmethod
     def agent_done(cls, response: str | None = None, usage: TokenUsage | None = None) -> AgentEvent:
         return cls(

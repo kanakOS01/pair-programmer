@@ -6,5 +6,4 @@ from pp.domain import AgentEvent
 
 class BaseAgent(ABC):
     @abstractmethod
-    def run(self, prompt: str) ->  AsyncGenerator[AgentEvent]:
-        ...
+    def run(self, prompt: str) -> AsyncGenerator[AgentEvent]: ...

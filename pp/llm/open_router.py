@@ -1,12 +1,9 @@
-from openai import APIError
-from openai import APIConnectionError
 import asyncio
-from openai import RateLimitError
-from typing import override, Any, AsyncGenerator
+from typing import Any, AsyncGenerator, override
 
-from openai import AsyncOpenAI
+from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
-from pp.domain import LLMConfig, LLMEvent, TokenUsage, TextDelta
+from pp.domain import LLMConfig, LLMEvent, TextDelta, TokenUsage
 from pp.llm import BaseLLM
 
 
@@ -14,7 +11,6 @@ class OpenRouterLLM(BaseLLM):
     def __init__(self, cfg: LLMConfig) -> None:
         super().__init__(cfg)
         self._client: AsyncOpenAI | None = None
-    
 
     @override
     def get_client(self) -> Any:
@@ -24,14 +20,12 @@ class OpenRouterLLM(BaseLLM):
                 api_key=self.cfg.api_key,
             )
         return self._client
-    
 
     @override
     async def close(self) -> None:
         if self._client is not None:
             await self._client.close()
             self._client = None
-
 
     @override
     async def generate(self, messages: list[dict[str, Any]], stream: bool = True) -> AsyncGenerator[LLMEvent, None]:
@@ -48,27 +42,26 @@ class OpenRouterLLM(BaseLLM):
                         yield event
                 else:
                     yield await self._generate_non_stream(client, kwargs)
-                
+
                 return
-        
+
             except RateLimitError as rle:
                 if attempt == self._retries - 1:
                     yield LLMEvent.stream_error(error=f"Rate limit exceeded. {rle}")
                     return
-                await asyncio.sleep(2 ** attempt)
-            
+                await asyncio.sleep(2**attempt)
+
             except APIConnectionError as ace:
                 if attempt == self._retries - 1:
                     yield LLMEvent.stream_error(error=f"API connection error. {ace}")
                     return
-                await asyncio.sleep(2 ** attempt)
-            
+                await asyncio.sleep(2**attempt)
+
             except APIError as ae:
                 if attempt == self._retries - 1:
                     yield LLMEvent.stream_error(error=f"Error decoding response. {ae}")
                     return
-                await asyncio.sleep(2 ** attempt)
-
+                await asyncio.sleep(2**attempt)
 
     async def _generate_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> AsyncGenerator[LLMEvent, None]:
         response = await client.chat.completions.create(
@@ -88,25 +81,22 @@ class OpenRouterLLM(BaseLLM):
                     completion_tokens=chunk.usage.completion_tokens,
                     total_tokens=chunk.usage.total_tokens,
                     cached_tokens=(
-                        chunk.usage.prompt_tokens_details.cached_tokens or 0
-                        if chunk.usage.prompt_tokens_details
-                        else 0
+                        chunk.usage.prompt_tokens_details.cached_tokens or 0 if chunk.usage.prompt_tokens_details else 0
                     ),
                 )
-            
+
             if not chunk.choices:
                 continue
 
             choice = chunk.choices[0]
-            
+
             if choice.finish_reason:
-                finish_reason = choice.finish_reason   
-        
+                finish_reason = choice.finish_reason
+
             if choice.delta.content:
                 yield LLMEvent.stream_text_delta(text_delta=TextDelta(text=choice.delta.content))
-        
-        yield LLMEvent.stream_done(finish_reason=finish_reason, usage=usage)
 
+        yield LLMEvent.stream_done(finish_reason=finish_reason, usage=usage)
 
     async def _generate_non_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> LLMEvent:
         response = await client.chat.completions.create(
@@ -114,7 +104,7 @@ class OpenRouterLLM(BaseLLM):
             messages=kwargs["messages"],
             stream=False,
         )
-        
+
         choice = response.choices[0]
         message = choice.message
 

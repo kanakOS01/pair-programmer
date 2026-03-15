@@ -1,5 +1,5 @@
 from pp.agents.base import BaseAgent
-from pp.agents.coding_agent import CodingAgent
+from pp.agents.coding import CodingAgent
 
 __all__ = [
     "BaseAgent",

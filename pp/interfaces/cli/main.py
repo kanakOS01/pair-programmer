@@ -1,12 +1,11 @@
-import sys
-
-from pp.domain import AgentEventType
-from pp.agents import CodingAgent
 import asyncio
+import sys
 from functools import wraps
 
 import typer
 
+from pp.agents import CodingAgent
+from pp.domain import AgentEventType
 from pp.interfaces.cli.tui import TUI, get_console
 
 app = typer.Typer()
@@ -19,17 +18,15 @@ class CLI:
         self.coding_agent: CodingAgent | None = None
         self.tui: TUI = TUI(console)
 
-    
     async def run_once(self, prompt: str):
         async with CodingAgent() as agent:
             self.coding_agent = agent
-            return await self._process_message(prompt)            
-
+            return await self._process_message(prompt)
 
     async def _process_message(self, message: str) -> str | None:
         if not self.coding_agent:
             return None
-        
+
         assistant_streaming = False
 
         async for event in self.coding_agent.run(message):
@@ -40,7 +37,7 @@ class CLI:
 
                 content = event.data.get("content", "")
                 self.tui.stream_delta(content)
-            
+
             elif event.type == AgentEventType.TextComplete:
                 final_response = event.data.get("content", "")
                 if assistant_streaming:
@@ -48,12 +45,10 @@ class CLI:
                     assistant_streaming = False
 
                 return final_response
-            
+
             elif event.type == AgentEventType.Error:
                 error = event.data.get("error", "Unkown error")
                 self.tui.error(error)
-
-                
 
 
 def coro(f):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 
 
@@ -16,7 +17,7 @@ class TokenUsage:
     completion_tokens: int = 0
     total_tokens: int = 0
     cached_tokens: int = 0
-    
+
     def __add__(self, other: TokenUsage) -> TokenUsage:
         return TokenUsage(
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
