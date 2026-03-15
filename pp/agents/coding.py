@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import AsyncGenerator
 
 from pp.agents import BaseAgent
+from pp.context.manager import ContextManager
 from pp.domain import AgentEvent, AgentEventType, LLMConfig, LLMEventType
 from pp.llm import OpenRouterLLM
 
@@ -16,6 +17,7 @@ class CodingAgent(BaseAgent):
                 retries=2,
             ),
         )
+        self.context_manager = ContextManager()
 
     async def __aenter__(self) -> CodingAgent:
         return self
@@ -26,6 +28,7 @@ class CodingAgent(BaseAgent):
 
     async def run(self, prompt: str) -> AsyncGenerator[AgentEvent]:
         yield AgentEvent.agent_start(message=prompt)
+        self.context_manager.add_user_message(prompt)
 
         final_response = None
         async for event in self._loop():
@@ -40,13 +43,12 @@ class CodingAgent(BaseAgent):
         """
         Multiturn interaction with LLM
         """
-        messages = [
-            {"role": "user", "content": "Hello, how are you?"},
-        ]
-
         response_text = ""
 
-        async for event in self.llm.generate(messages=messages, stream=True):
+        async for event in self.llm.generate(
+            messages=self.context_manager.get_messages(),
+            stream=True,
+        ):
             if event.type == LLMEventType.TextDelta and event.text_delta:
                 content = event.text_delta.text
                 response_text += content
@@ -54,5 +56,6 @@ class CodingAgent(BaseAgent):
             elif event.type == LLMEventType.Error:
                 yield AgentEvent.agent_error(error=event.error or "Unknown error")
 
+        self.context_manager.add_assistant_message(response_text or "")
         if response_text:
             yield AgentEvent.agent_text_complete(content=response_text)
