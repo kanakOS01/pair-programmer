@@ -24,7 +24,20 @@ class ToolResult:
     ok: bool
     output: str
     error: str | None = None
+    truncated: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def error_result(cls, error: str, output: str = ""):
+        return cls(
+            ok=False,
+            output=output,
+            error=error,
+        )
+
+    @classmethod
+    def success_result(cls, output: str, **kwargs: Any):
+        return cls(ok=True, output=output, **kwargs)
 
 
 @dataclass
