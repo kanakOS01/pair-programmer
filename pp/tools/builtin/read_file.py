@@ -5,10 +5,6 @@ from pp.tools.base import Tool
 from pp.utils.paths import is_binary_file, resolve_path
 from pp.utils.text import count_tokens, truncate_text
 
-MAX_FILE_SIZE_BYTES = 1024 * 1024 * 10  # 10 mb
-ONE_MEGA_BYTE = 1024 * 1024
-MAX_OUTPUT_TOKENS = 25_000
-
 
 class ReadFileParams(BaseModel):
     path: str = Field(..., description="Path to file (relative to cwd or absolute)")
@@ -24,8 +20,11 @@ class ReadFileTool(Tool):
         "Cannot read binary files (images, executables, etc.)."
     )
     type = ToolType.READ
-
     schema = ReadFileParams
+
+    MAX_FILE_SIZE_BYTES = 1024 * 1024 * 10  # 10 mb
+    ONE_MEGA_BYTE = 1024 * 1024
+    MAX_OUTPUT_TOKENS = 25_000
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ReadFileParams(**invocation.params)
@@ -38,10 +37,10 @@ class ReadFileTool(Tool):
             return ToolResult.error_result(f"Path is not a file: {path}")
 
         file_size = path.stat().st_size
-        if file_size > MAX_FILE_SIZE_BYTES:
+        if file_size > self.MAX_FILE_SIZE_BYTES:
             return ToolResult.error_result(
-                f"File too large ({file_size / ONE_MEGA_BYTE:.1f} MB)"
-                f"Maximum is ({MAX_FILE_SIZE_BYTES / ONE_MEGA_BYTE:.1f} MB)"
+                f"File too large ({file_size / self.ONE_MEGA_BYTE:.1f} MB) "
+                f"Maximum is ({self.MAX_FILE_SIZE_BYTES / self.ONE_MEGA_BYTE:.1f} MB)"
             )
 
         if is_binary_file(path):
@@ -71,16 +70,17 @@ class ReadFileTool(Tool):
             output = "\n".join(formatted_lines)
 
             truncated = False
-            if count_tokens(output) > MAX_OUTPUT_TOKENS:
+            if count_tokens(output, "") > self.MAX_OUTPUT_TOKENS:
                 output = truncate_text(
                     output,
-                    MAX_OUTPUT_TOKENS,
+                    "",
+                    self.MAX_OUTPUT_TOKENS,
                 )
                 truncated = True
 
             lines_metadata = []
             if start_idx > 0 or end_idx < total_lines:
-                lines_metadata.append(f"Read lines {start_idx+1}-{end_idx}")
+                lines_metadata.append(f"Read lines {start_idx + 1}-{end_idx}")
 
             if lines_metadata:
                 header = " | ".join(lines_metadata) + "\n"
