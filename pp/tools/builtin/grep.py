@@ -92,6 +92,7 @@ class GrepTool(Tool):
         truncated = False
         if len(lines) > self.MAX_RESULTS:
             lines = lines[: self.MAX_RESULTS]
+            lines.append("\n... [truncated]")
             truncated = True
 
         return ToolResult.success_result(
