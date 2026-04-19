@@ -1,23 +1,21 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import AsyncGenerator
 
 from pp.agents import BaseAgent
 from pp.context.manager import ContextManager
-from pp.domain import AgentEvent, AgentEventType, LLMConfig, LLMEventType
+from pp.domain import AgentEvent, AgentEventType, LLMEventType, TokenUsage, ToolCall
+from pp.domain.message import ToolResultMessage
 from pp.llm import OpenRouterLLM
+from pp.tools.registry import create_default_registry
 
 
 class CodingAgent(BaseAgent):
     def __init__(self) -> None:
-        self.llm = OpenRouterLLM(
-            cfg=LLMConfig(
-                model="stepfun/step-3.5-flash:free",
-                base_url="https://openrouter.ai/api/v1",
-                retries=2,
-            ),
-        )
+        self.llm = OpenRouterLLM()
         self.context_manager = ContextManager()
+        self.tool_registry = create_default_registry()
 
     async def __aenter__(self) -> CodingAgent:
         return self
@@ -45,17 +43,56 @@ class CodingAgent(BaseAgent):
         """
         response_text = ""
 
+        tool_schemas = self.tool_registry.get_schemas()
+
+        tool_calls: list[ToolCall] = []
+        usage: TokenUsage | None = None
+
         async for event in self.llm.generate(
             messages=self.context_manager.get_messages(),
+            tools=tool_schemas,
             stream=True,
         ):
             if event.type == LLMEventType.TextDelta and event.text_delta:
                 content = event.text_delta.text
                 response_text += content
                 yield AgentEvent.agent_text_delta(content=content)
+
+            elif event.type == LLMEventType.ToolCallDone:
+                if event.tool_call:
+                    tool_calls.append(event.tool_call)
+
             elif event.type == LLMEventType.Error:
                 yield AgentEvent.agent_error(error=event.error or "Unknown error")
+
+            elif event.type == LLMEventType.Done:
+                if event.tool_calls:
+                    tool_calls.extend(event.tool_calls)
+                usage = event.usage
 
         self.context_manager.add_assistant_message(response_text or "")
         if response_text:
             yield AgentEvent.agent_text_complete(content=response_text)
+
+        tool_call_results: list[ToolResultMessage] = []
+        for tool_call in tool_calls:
+            yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
+
+            result = await self.tool_registry.invoke(
+                tool_call.name or "",
+                tool_call.args,
+                Path.cwd(),
+            )
+
+            yield AgentEvent.tool_call_done(tool_call.call_id, tool_call.name, result)
+
+            tool_call_results.append(
+                ToolResultMessage(
+                    call_id=tool_call.call_id,
+                    content=result.to_model_output(),
+                    is_error=not result.ok,
+                )
+            )
+
+        for tr in tool_call_results:
+            self.context_manager.add_tool_result_message(tr.call_id, tr.content)

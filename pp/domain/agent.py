@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any
 
 from pp.domain.shared import TokenUsage
+from pp.domain.tools import ToolResult
 
 
 class AgentEventType(str, Enum):
@@ -16,6 +17,10 @@ class AgentEventType(str, Enum):
     # streaming
     TextDelta = "text_delta"
     TextComplete = "text_complete"
+
+    # tool call
+    ToolCallStart = "tool_call_start"
+    ToolCallDone = "tool_call_done"
 
 
 @dataclass
@@ -62,4 +67,30 @@ class AgentEvent:
         return cls(
             type=AgentEventType.TextComplete,
             data={"content": content},
+        )
+
+    @classmethod
+    def tool_call_start(cls, call_id: str, name: str | None, args: dict[str, Any]):
+        return cls(
+            type=AgentEventType.ToolCallStart,
+            data={
+                "call_id": call_id,
+                "name": name,
+                "args": args,
+            },
+        )
+
+    @classmethod
+    def tool_call_done(cls, call_id: str, name: str | None, result: ToolResult) -> AgentEvent:
+        return cls(
+            type=AgentEventType.ToolCallDone,
+            data={
+                "call_id": call_id,
+                "name": name,
+                "success": result.ok,
+                "error": result.error,
+                "output": result.output,
+                "metadata": result.metadata,
+                "truncated": result.truncated,
+            },
         )

@@ -19,6 +19,12 @@ class ContextManager:
         message = Message(role="assistant", content=content or "", token_count=count_tokens(content or "", self._model_name))
         self._messages.append(message)
 
+    def add_tool_result_message(self, tool_call_id: str, content: str) -> None:
+        message = Message(
+            role="tool", content=content, tool_call_id=tool_call_id, token_count=count_tokens(content, self._model_name)
+        )
+        self._messages.append(message)
+
     def get_messages(self) -> list[dict[str, Any]]:
         messages = []
 

@@ -3,7 +3,7 @@ from typing import Any, AsyncGenerator, override
 
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
-from pp.domain import LLMConfig, LLMEvent, TextDelta, TokenUsage
+from pp.domain import LLMConfig, LLMEvent, LLMEventType, TextDelta, TokenUsage, ToolCall, ToolCallDelta
 from pp.llm import BaseLLM
 
 
@@ -28,12 +28,22 @@ class OpenRouterLLM(BaseLLM):
             self._client = None
 
     @override
-    async def generate(self, messages: list[dict[str, Any]], stream: bool = True) -> AsyncGenerator[LLMEvent, None]:
+    async def generate(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        stream: bool = True,
+    ) -> AsyncGenerator[LLMEvent, None]:
         client = self.get_client()
+
         kwargs = {
             "model": self.cfg.model,
             "messages": messages,
         }
+
+        if tools:
+            kwargs["tools"] = self._build_tools(tools)
+            kwargs["tool_choice"] = "auto"
 
         for attempt in range(self._retries):
             try:
@@ -67,11 +77,13 @@ class OpenRouterLLM(BaseLLM):
         response = await client.chat.completions.create(
             model=kwargs["model"],
             messages=kwargs["messages"],
+            tools=kwargs["tools"],
             stream=True,
         )
 
         finish_reason: str | None = None
         usage: TokenUsage | None = None
+        tool_calls: dict[int, dict[str, Any]] = {}
 
         async for chunk in response:
             # usage only available in the last chunk
@@ -96,12 +108,52 @@ class OpenRouterLLM(BaseLLM):
             if choice.delta.content:
                 yield LLMEvent.stream_text_delta(text_delta=TextDelta(text=choice.delta.content))
 
+            if choice.delta.tool_calls:
+                for tool_call_delta in choice.delta.tool_calls:
+                    idx = tool_call_delta.index
+
+                    if idx not in tool_calls:
+                        tool_calls[idx] = {
+                            "id": tool_call_delta.id or "",
+                            "name": "",
+                            "args": "",
+                        }
+
+                        if tool_call_delta.function:
+                            if tool_call_delta.function.name:
+                                tool_calls[idx]["name"] = tool_call_delta.function.name
+                                yield LLMEvent(
+                                    type=LLMEventType.ToolCallStart,
+                                    tool_call_delta=ToolCallDelta(
+                                        call_id=tool_calls[idx]["id"],
+                                        name=tool_calls[idx]["name"],
+                                    ),
+                                )
+
+                            if tool_call_delta.function.arguments:
+                                tool_calls[idx]["args"] += tool_call_delta.function.arguments
+                                yield LLMEvent(
+                                    type=LLMEventType.ToolCallDelta,
+                                    tool_call_delta=ToolCallDelta(
+                                        call_id=tool_calls[idx]["id"],
+                                        name=tool_calls[idx]["name"],
+                                        args_delta=tool_call_delta.function.arguments,
+                                    ),
+                                )
+
+        for _, tc in tool_calls.items():
+            yield LLMEvent(
+                type=LLMEventType.ToolCallDone,
+                tool_call=ToolCall(call_id=tc["id"], name=tc["name"], args=self._parse_tool_call_args(tc["args"])),
+            )
+
         yield LLMEvent.stream_done(finish_reason=finish_reason, usage=usage)
 
     async def _generate_non_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> LLMEvent:
         response = await client.chat.completions.create(
             model=kwargs["model"],
             messages=kwargs["messages"],
+            tools=kwargs["tools"],
             stream=False,
         )
 
@@ -112,11 +164,25 @@ class OpenRouterLLM(BaseLLM):
         if message.content:
             text_delta = TextDelta(text=message.content)
 
-        usage = TokenUsage(
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens,
-            total_tokens=response.usage.total_tokens,
-            cached_tokens=response.usage.prompt_tokens_details.cached_tokens,
-        )
+        tool_calls: list[ToolCall] = []
+        for tc in message.tool_calls or []:
+            tool_calls.append(
+                ToolCall(
+                    call_id=tc.id,
+                    name=tc.function.name,  # type: ignore[attr-defined]
+                    args=self._parse_tool_call_args(tc.function.arguments),  # type: ignore[attr-defined]
+                )
+            )
 
-        return LLMEvent.stream_done(finish_reason=choice.finish_reason, usage=usage, text_delta=text_delta)
+        usage: TokenUsage | None = None
+        if response.usage:
+            usage = TokenUsage(
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens,
+                cached_tokens=(
+                    response.usage.prompt_tokens_details.cached_tokens or 0 if response.usage.prompt_tokens_details else 0
+                ),
+            )
+
+        return LLMEvent.stream_done(finish_reason=choice.finish_reason, usage=usage, text_delta=text_delta, tool_calls=tool_calls)

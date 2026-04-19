@@ -5,6 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "ddgs>=9.10.0",
+    "httpx>=0.28.1",
     "openai>=2.15.0",
     "pydantic>=2.12.5",
     "tiktoken>=0.12.0",
@@ -14,7 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
-    "ruff>=0.15.6",
+    "ruff>=0.15.4",
 ]
 
 [tool.ruff]
@@ -29,3 +31,7 @@ ignore = ["F841", "F403", "E402", "B026", "F405", "E101", "B008", "B905", "B006"
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+
+[tool.uv]
+exclude-newer = "30 days"
