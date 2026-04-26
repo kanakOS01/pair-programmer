@@ -62,6 +62,20 @@ class TUI:
         syntax = Syntax(code, language)
         self.console.print(syntax)
 
+    def welcome(self, title: str, lines: list[str]) -> None:
+        body = "\n".join(lines)
+        self.console.print()
+        self.console.print(
+            Panel(
+                Text(body, style="code"),
+                title=Text(title, style="highlight"),
+                title_align="left",
+                border_style="border",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
+        )
+
     def tool_call_start(self, *, call_id: str, name: str, tool_type: str | None, args: dict[str, Any]) -> None:
         self._tool_args_by_call_id[call_id] = args
         border_style = f"tool.{tool_type}" if tool_type else "tool"
@@ -119,7 +133,7 @@ class TUI:
 
                 language = self._guess_language(path)
 
-                blocks.append(Text())
+                # blocks.append(Text())
 
                 header_parts = [path, "•"] if path else []
                 if start_line is not None and end_line is not None and total_lines is not None:
@@ -157,7 +171,7 @@ class TUI:
             box=box.ROUNDED,
             padding=(1, 2),
         )
-        self.console.print()
+        # self.console.print()
         self.console.print(panel)
 
     def _render_args_table(self, tool_name: str, args: dict[str, Any]) -> Table:

@@ -10,6 +10,7 @@ dependencies = [
     "openai>=2.15.0",
     "pydantic>=2.12.5",
     "tiktoken>=0.12.0",
+    "tomli>=2.4.1",
     "typer>=0.21.1",
 ]
 

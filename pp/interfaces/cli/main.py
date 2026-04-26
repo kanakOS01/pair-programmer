@@ -1,11 +1,13 @@
 import asyncio
 import sys
 from functools import wraps
+from pathlib import Path
 from typing import Literal
 
 import typer
 
 from pp.agents import CodingAgent
+from pp.config import Config, load_config
 from pp.domain import AgentEventType
 from pp.interfaces.cli.tui import TUI, get_console
 
@@ -19,20 +21,25 @@ class CLI:
         self.coding_agent: CodingAgent | None = None
         self.tui: TUI = TUI(console)
 
-    async def run(self, run_type: Literal["one_time", "interactive"] = "interactive", prompt: str = ""):
+    async def run(self, config: Config, run_type: Literal["one_time", "interactive"] = "interactive", prompt: str = ""):
         if run_type == "one_time":
-            return await self._run_once(prompt)
+            return await self._run_once(config, prompt)
         elif run_type == "interactive":
-            return await self._run_interactive()
+            return await self._run_interactive(config)
 
-    async def _run_once(self, prompt: str):
-        async with CodingAgent() as agent:
+    async def _run_once(self, config: Config, prompt: str):
+        async with CodingAgent(config=config) as agent:
             self.coding_agent = agent
             return await self._process_message(prompt)
 
-    async def _run_interactive(self):
-        async with CodingAgent() as agent:
+    async def _run_interactive(self, config: Config):
+        async with CodingAgent(config=config) as agent:
             self.coding_agent = agent
+
+            self.tui.welcome(
+                title="Pair Programmer",
+                lines=[f"Model: {config.model_name}", f"cwd: {config.cwd}", "commands: /help /config /approval /model /exit"],
+            )
 
             while True:
                 try:
@@ -114,17 +121,43 @@ def coro(f):
 
 @app.command()
 @coro
-async def main(prompt: str = ""):
+async def main(
+    prompt: str = "",
+    cwd: Path = typer.Option(
+        Path.cwd(),
+        "--cwd",
+        "-c",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Set the current working directory",
+    ),
+):
     """
     Entrypoint of pp (pair-programmer) CLI
     """
+    try:
+        config = load_config(cwd=cwd)
+    except Exception as e:
+        console.print(f"[error]Error loading config: {e}[/error]")
+        sys.exit(1)
+
+    errors = config.get_validation_errors()
+    if errors:
+        console.print("[error]Config validation errors:[/error]")
+        for error in errors:
+            console.print(f"- {error}")
+        sys.exit(1)
+
     cli = CLI()
+
     if prompt:
-        res = await cli.run(run_type="one_time", prompt=prompt)
+        res = await cli.run(run_type="one_time", prompt=prompt, config=config)
         if res is None:
             sys.exit(1)
     else:
-        await cli.run()
+        await cli.run(config=config)
 
 
 if __name__ == "__main__":

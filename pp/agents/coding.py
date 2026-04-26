@@ -1,19 +1,29 @@
 from __future__ import annotations
 
-from pathlib import Path
+import json
 from typing import AsyncGenerator
 
 from pp.agents import BaseAgent
+from pp.config import Config
 from pp.context.manager import ContextManager
-from pp.domain import AgentEvent, AgentEventType, LLMEventType, TokenUsage, ToolCall
+from pp.domain import AgentEvent, AgentEventType, LLMConfig, LLMEventType, TokenUsage, ToolCall
 from pp.domain.message import ToolResultMessage
 from pp.llm import OpenRouterLLM
 from pp.tools.registry import create_default_registry
 
 
 class CodingAgent(BaseAgent):
-    def __init__(self) -> None:
-        self.llm = OpenRouterLLM()
+    def __init__(self, config: Config) -> None:
+        self.config = config
+        self.cwd = config.cwd
+        self.llm = OpenRouterLLM(
+            cfg=LLMConfig(
+                model=config.model_name,
+                base_url=config.base_url,
+                api_key=config.api_key,
+                retries=2,
+            ),
+        )
         self.context_manager = ContextManager()
         self.tool_registry = create_default_registry()
 
@@ -70,7 +80,15 @@ class CodingAgent(BaseAgent):
                     tool_calls.extend(event.tool_calls)
                 usage = event.usage
 
-        self.context_manager.add_assistant_message(response_text or "")
+        self.context_manager.add_assistant_message(
+            response_text or "",
+            tool_calls=[
+                {"id": tc.call_id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.args)}}
+                for tc in tool_calls
+            ]
+            if tool_calls
+            else None,
+        )
         if response_text:
             yield AgentEvent.agent_text_complete(content=response_text)
 
@@ -81,7 +99,7 @@ class CodingAgent(BaseAgent):
             result = await self.tool_registry.invoke(
                 tool_call.name,
                 tool_call.args,
-                Path.cwd(),
+                self.cwd,
             )
 
             yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
