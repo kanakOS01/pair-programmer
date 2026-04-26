@@ -16,18 +16,6 @@ DEFAULT_THEME = Theme(
         "panel": "dim",
         "header": "bold",
         "footer": "dim",
-        # states
-        "success": "bold green",
-        "warning": "yellow",
-        "error": "bold red",
-        "debug": "dim cyan",
-        # tool / execution
-        "tool": "bold blue",
-        "path": "underline cyan",
-        "code": "bright_white",
-        "diff.add": "green",
-        "diff.remove": "red",
-        "diff.change": "yellow",
         # tokens / usage
         "usage.prompt": "cyan",
         "usage.completion": "magenta",
@@ -35,5 +23,25 @@ DEFAULT_THEME = Theme(
         # spinner / status
         "spinner": "bold cyan",
         "status": "dim white",
+        "muted": "dim white",
+        # general
+        "info": "cyan",
+        "warning": "yellow",
+        "error": "bright_red bold",
+        "success": "green",
+        "dim": "dim",
+        "highlight": "bold cyan",
+        "debug": "dim cyan",
+        # Tools
+        "tool": "bright_magenta bold",
+        "tool.read": "cyan",
+        "tool.write": "yellow",
+        "tool.shell": "magenta",
+        "tool.network": "bright_blue",
+        "tool.memory": "green",
+        "tool.mcp": "bright_cyan",
+        "path": "underline cyan",
+        # Code / blocks
+        "code": "white",
     }
 )

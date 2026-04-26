@@ -1,5 +1,5 @@
 from pp.tools.base import Tool
-from pp.tools.builtin.Glob import GlobTool
+from pp.tools.builtin.glob import GlobTool
 from pp.tools.builtin.grep import GrepTool
 from pp.tools.builtin.list_dir import ListDirTool
 from pp.tools.builtin.read_file import ReadFileTool

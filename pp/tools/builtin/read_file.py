@@ -92,8 +92,8 @@ class ReadFileTool(Tool):
                 metadata={
                     "path": str(path),
                     "total_lines": total_lines,
-                    "line_start": start_idx + 1,
-                    "line_end": end_idx,
+                    "start_line": start_idx + 1,
+                    "end_line": end_idx,
                 },
             )
 

@@ -23,6 +23,7 @@ class LLMEventType(str, Enum):
     ToolCallStart = "tool_call_start"
     ToolCallDelta = "tool_call_delta"
     ToolCallDone = "tool_call_done"
+    ToolCallExecuted = "tool_call_executed"
 
 
 @dataclass

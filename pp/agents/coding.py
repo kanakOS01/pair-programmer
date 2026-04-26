@@ -79,12 +79,12 @@ class CodingAgent(BaseAgent):
             yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
 
             result = await self.tool_registry.invoke(
-                tool_call.name or "",
+                tool_call.name,
                 tool_call.args,
                 Path.cwd(),
             )
 
-            yield AgentEvent.tool_call_done(tool_call.call_id, tool_call.name, result)
+            yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
 
             tool_call_results.append(
                 ToolResultMessage(

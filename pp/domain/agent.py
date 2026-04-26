@@ -21,6 +21,7 @@ class AgentEventType(str, Enum):
     # tool call
     ToolCallStart = "tool_call_start"
     ToolCallDone = "tool_call_done"
+    ToolCallExecuted = "tool_call_executed"
 
 
 @dataclass
@@ -81,7 +82,7 @@ class AgentEvent:
         )
 
     @classmethod
-    def tool_call_done(cls, call_id: str, name: str | None, result: ToolResult) -> AgentEvent:
+    def tool_call_excecuted(cls, call_id: str, name: str | None, result: ToolResult) -> AgentEvent:
         return cls(
             type=AgentEventType.ToolCallDone,
             data={

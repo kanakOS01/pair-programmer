@@ -1,6 +1,7 @@
 import asyncio
 import sys
 from functools import wraps
+from typing import Literal
 
 import typer
 
@@ -18,10 +19,37 @@ class CLI:
         self.coding_agent: CodingAgent | None = None
         self.tui: TUI = TUI(console)
 
-    async def run_once(self, prompt: str):
+    async def run(self, run_type: Literal["one_time", "interactive"] = "interactive", prompt: str = ""):
+        if run_type == "one_time":
+            return await self._run_once(prompt)
+        elif run_type == "interactive":
+            return await self._run_interactive()
+
+    async def _run_once(self, prompt: str):
         async with CodingAgent() as agent:
             self.coding_agent = agent
             return await self._process_message(prompt)
+
+    async def _run_interactive(self):
+        async with CodingAgent() as agent:
+            self.coding_agent = agent
+
+            while True:
+                try:
+                    inp = console.input("\n[user]>[/user] ").strip()
+                    if not inp:
+                        continue
+
+                    await self._process_message(inp)
+
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Exiting...[/dim]\n")
+                    break
+
+                except EOFError:
+                    break
+
+        console.print("\n[dim]Goodbye![/dim]\n")
 
     async def _process_message(self, message: str) -> str | None:
         if not self.coding_agent:
@@ -50,6 +78,31 @@ class CLI:
                 error = event.data.get("error", "Unkown error")
                 self.tui.error(error)
 
+            elif event.type == AgentEventType.ToolCallStart:
+                tool_name = event.data.get("name", "Unknown")
+                tool = self.coding_agent.tool_registry.get(tool_name)
+                tool_type = tool.type.value if tool else None
+
+                self.tui.tool_call_start(
+                    call_id=event.data.get("call_id", ""), name=tool_name, tool_type=tool_type, args=event.data.get("args", {})
+                )
+
+            elif event.type == AgentEventType.ToolCallDone:
+                tool_name = event.data.get("name", "Unknown")
+                tool = self.coding_agent.tool_registry.get(tool_name)
+                tool_type = tool.type.value if tool else None
+
+                self.tui.tool_call_done(
+                    call_id=event.data.get("call_id", ""),
+                    name=tool_name,
+                    tool_type=tool_type,
+                    success=event.data.get("success", False),
+                    output=event.data.get("output", ""),
+                    error=event.data.get("error", None),
+                    meta=event.data.get("metadata", None),
+                    truncated=event.data.get("truncated", False),
+                )
+
 
 def coro(f):
     @wraps(f)
@@ -66,11 +119,12 @@ async def main(prompt: str = ""):
     Entrypoint of pp (pair-programmer) CLI
     """
     cli = CLI()
-    messages = [{"role": "user", "content": prompt}]
     if prompt:
-        res = await cli.run_once(prompt)
+        res = await cli.run(run_type="one_time", prompt=prompt)
         if res is None:
             sys.exit(1)
+    else:
+        await cli.run()
 
 
 if __name__ == "__main__":

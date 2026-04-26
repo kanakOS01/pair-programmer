@@ -28,7 +28,7 @@ class ToolResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def error_result(cls, error: str, output: str = ""):
+    def error_result(cls, error: str, output: str = "", **kwargs: Any):
         return cls(
             ok=False,
             output=output,
@@ -38,6 +38,12 @@ class ToolResult:
     @classmethod
     def success_result(cls, output: str, **kwargs: Any):
         return cls(ok=True, output=output, **kwargs)
+
+    def to_model_output(self) -> str:
+        if self.ok:
+            return self.output
+
+        return f"Error: {self.error}\n\nOutput:\n{self.output}"
 
 
 @dataclass

@@ -84,6 +84,7 @@ class OpenRouterLLM(BaseLLM):
         finish_reason: str | None = None
         usage: TokenUsage | None = None
         tool_calls: dict[int, dict[str, Any]] = {}
+        tool_calls_started: set[int] = set()
 
         async for chunk in response:
             # usage only available in the last chunk
@@ -119,27 +120,34 @@ class OpenRouterLLM(BaseLLM):
                             "args": "",
                         }
 
-                        if tool_call_delta.function:
-                            if tool_call_delta.function.name:
-                                tool_calls[idx]["name"] = tool_call_delta.function.name
-                                yield LLMEvent(
-                                    type=LLMEventType.ToolCallStart,
-                                    tool_call_delta=ToolCallDelta(
-                                        call_id=tool_calls[idx]["id"],
-                                        name=tool_calls[idx]["name"],
-                                    ),
-                                )
+                    tc = tool_calls[idx]
+                    if tool_call_delta.id:
+                        tc["id"] = tool_call_delta.id
 
-                            if tool_call_delta.function.arguments:
-                                tool_calls[idx]["args"] += tool_call_delta.function.arguments
-                                yield LLMEvent(
-                                    type=LLMEventType.ToolCallDelta,
-                                    tool_call_delta=ToolCallDelta(
-                                        call_id=tool_calls[idx]["id"],
-                                        name=tool_calls[idx]["name"],
-                                        args_delta=tool_call_delta.function.arguments,
-                                    ),
-                                )
+                    if tool_call_delta.function:
+                        if tool_call_delta.function.name:
+                            tc["name"] += tool_call_delta.function.name
+
+                        if tc["name"] and idx not in tool_calls_started:
+                            yield LLMEvent(
+                                type=LLMEventType.ToolCallStart,
+                                tool_call_delta=ToolCallDelta(
+                                    call_id=tc["id"],
+                                    name=tc["name"],
+                                ),
+                            )
+                            tool_calls_started.add(idx)
+
+                        if tool_call_delta.function.arguments:
+                            tc["args"] += tool_call_delta.function.arguments
+                            yield LLMEvent(
+                                type=LLMEventType.ToolCallDelta,
+                                tool_call_delta=ToolCallDelta(
+                                    call_id=tc["id"],
+                                    name=tc["name"],
+                                    args_delta=tool_call_delta.function.arguments,
+                                ),
+                            )
 
         for _, tc in tool_calls.items():
             yield LLMEvent(
