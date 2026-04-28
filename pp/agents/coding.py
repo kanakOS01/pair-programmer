@@ -24,7 +24,7 @@ class CodingAgent(BaseAgent):
                 retries=2,
             ),
         )
-        self.context_manager = ContextManager()
+        self.context_manager = ContextManager(config)
         self.tool_registry = create_default_registry()
 
     async def __aenter__(self) -> CodingAgent:
@@ -51,66 +51,71 @@ class CodingAgent(BaseAgent):
         """
         Multiturn interaction with LLM
         """
-        response_text = ""
+        for _ in range(self.config.max_turns):
+            response_text = ""
 
-        tool_schemas = self.tool_registry.get_schemas()
+            tool_schemas = self.tool_registry.get_schemas()
 
-        tool_calls: list[ToolCall] = []
-        usage: TokenUsage | None = None
+            tool_calls: list[ToolCall] = []
+            usage: TokenUsage | None = None
 
-        async for event in self.llm.generate(
-            messages=self.context_manager.get_messages(),
-            tools=tool_schemas,
-            stream=True,
-        ):
-            if event.type == LLMEventType.TextDelta and event.text_delta:
-                content = event.text_delta.text
-                response_text += content
-                yield AgentEvent.agent_text_delta(content=content)
+            async for event in self.llm.generate(
+                messages=self.context_manager.get_messages(),
+                tools=tool_schemas,
+                stream=True,
+            ):
+                if event.type == LLMEventType.TextDelta and event.text_delta:
+                    content = event.text_delta.text
+                    response_text += content
+                    yield AgentEvent.agent_text_delta(content=content)
 
-            elif event.type == LLMEventType.ToolCallDone:
-                if event.tool_call:
-                    tool_calls.append(event.tool_call)
+                elif event.type == LLMEventType.ToolCallDone:
+                    if event.tool_call:
+                        tool_calls.append(event.tool_call)
 
-            elif event.type == LLMEventType.Error:
-                yield AgentEvent.agent_error(error=event.error or "Unknown error")
+                elif event.type == LLMEventType.Error:
+                    yield AgentEvent.agent_error(error=event.error or "Unknown error")
 
-            elif event.type == LLMEventType.Done:
-                if event.tool_calls:
-                    tool_calls.extend(event.tool_calls)
-                usage = event.usage
+                elif event.type == LLMEventType.Done:
+                    if event.tool_calls:
+                        tool_calls.extend(event.tool_calls)
+                    usage = event.usage
 
-        self.context_manager.add_assistant_message(
-            response_text or "",
-            tool_calls=[
-                {"id": tc.call_id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.args)}}
-                for tc in tool_calls
-            ]
-            if tool_calls
-            else None,
-        )
-        if response_text:
-            yield AgentEvent.agent_text_complete(content=response_text)
-
-        tool_call_results: list[ToolResultMessage] = []
-        for tool_call in tool_calls:
-            yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
-
-            result = await self.tool_registry.invoke(
-                tool_call.name,
-                tool_call.args,
-                self.cwd,
+            self.context_manager.add_assistant_message(
+                response_text or "",
+                tool_calls=[
+                    {"id": tc.call_id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.args)}}
+                    for tc in tool_calls
+                ]
+                if tool_calls
+                else None,
             )
+            if response_text:
+                yield AgentEvent.agent_text_complete(content=response_text)
 
-            yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
+            # if no tool calls are present we may come out of the loop
+            if not tool_calls:
+                break
 
-            tool_call_results.append(
-                ToolResultMessage(
-                    call_id=tool_call.call_id,
-                    content=result.to_model_output(),
-                    is_error=not result.ok,
+            tool_call_results: list[ToolResultMessage] = []
+            for tool_call in tool_calls:
+                yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
+
+                result = await self.tool_registry.invoke(
+                    tool_call.name,
+                    tool_call.args,
+                    self.cwd,
                 )
-            )
 
-        for tr in tool_call_results:
-            self.context_manager.add_tool_result_message(tr.call_id, tr.content)
+                yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
+
+                tool_call_results.append(
+                    ToolResultMessage(
+                        call_id=tool_call.call_id,
+                        content=result.to_model_output(),
+                        is_error=not result.ok,
+                    )
+                )
+
+            for tr in tool_call_results:
+                self.context_manager.add_tool_result_message(tr.call_id, tr.content)
