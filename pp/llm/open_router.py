@@ -3,12 +3,13 @@ from typing import Any, AsyncGenerator, override
 
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
-from pp.domain import LLMConfig, LLMEvent, LLMEventType, TextDelta, TokenUsage, ToolCall, ToolCallDelta
+from pp.config import Config
+from pp.domain import LLMEvent, LLMEventType, TextDelta, TokenUsage, ToolCall, ToolCallDelta
 from pp.llm import BaseLLM
 
 
 class OpenRouterLLM(BaseLLM):
-    def __init__(self, cfg: LLMConfig) -> None:
+    def __init__(self, cfg: Config) -> None:
         super().__init__(cfg)
         self._client: AsyncOpenAI | None = None
 
@@ -37,7 +38,7 @@ class OpenRouterLLM(BaseLLM):
         client = self.get_client()
 
         kwargs = {
-            "model": self.cfg.model,
+            "model": self.cfg.model_name,
             "messages": messages,
         }
 

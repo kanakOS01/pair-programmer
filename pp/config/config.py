@@ -34,6 +34,7 @@ class Config(BaseModel):
     cwd: Path = Field(default_factory=Path.cwd)
 
     max_turns: int = 100
+    retries: int = 3
 
     allowed_tools: list[str] | None = Field(
         None,

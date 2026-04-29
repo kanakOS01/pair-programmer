@@ -7,14 +7,6 @@ from typing import Any
 from pp.domain.shared import TextDelta, TokenUsage
 
 
-@dataclass
-class LLMConfig:
-    model: str
-    api_key: str
-    base_url: str
-    retries: int | None = 3
-
-
 class LLMEventType(str, Enum):
     TextDelta = "text_delta"
     Error = "error"

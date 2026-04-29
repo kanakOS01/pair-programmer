@@ -3,13 +3,14 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Any, AsyncGenerator
 
-from pp.domain import LLMConfig, LLMEvent
+from pp.config import Config
+from pp.domain import LLMEvent
 
 
 class BaseLLM(ABC):
-    def __init__(self, cfg: LLMConfig) -> None:
+    def __init__(self, cfg: Config) -> None:
         self.cfg = cfg
-        self._retries = cfg.retries or 3
+        self._retries = cfg.retries
 
     @abstractmethod
     def get_client(self) -> Any: ...

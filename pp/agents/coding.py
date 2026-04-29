@@ -6,7 +6,7 @@ from typing import AsyncGenerator
 from pp.agents import BaseAgent
 from pp.config import Config
 from pp.context.manager import ContextManager
-from pp.domain import AgentEvent, AgentEventType, LLMConfig, LLMEventType, TokenUsage, ToolCall
+from pp.domain import AgentEvent, AgentEventType, LLMEventType, TokenUsage, ToolCall
 from pp.domain.message import ToolResultMessage
 from pp.llm import OpenRouterLLM
 from pp.tools.registry import create_default_registry
@@ -16,14 +16,7 @@ class CodingAgent(BaseAgent):
     def __init__(self, config: Config) -> None:
         self.config = config
         self.cwd = config.cwd
-        self.llm = OpenRouterLLM(
-            cfg=LLMConfig(
-                model=config.model_name,
-                base_url=config.base_url,
-                api_key=config.api_key,
-                retries=2,
-            ),
-        )
+        self.llm = OpenRouterLLM(cfg=config)
         self.context_manager = ContextManager(config)
         self.tool_registry = create_default_registry()
 
