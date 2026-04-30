@@ -5,31 +5,25 @@ from typing import AsyncGenerator
 
 from pp.agents import BaseAgent
 from pp.config import Config
-from pp.context.manager import ContextManager
+from pp.core.session import Session
 from pp.domain import AgentEvent, AgentEventType, LLMEventType, TokenUsage, ToolCall
 from pp.domain.message import ToolResultMessage
-from pp.llm import OpenRouterLLM
-from pp.tools.registry import create_default_registry
 
 
 class CodingAgent(BaseAgent):
     def __init__(self, config: Config) -> None:
-        self.config = config
-        self.cwd = config.cwd
-        self.llm = OpenRouterLLM(cfg=config)
-        self.context_manager = ContextManager(config)
-        self.tool_registry = create_default_registry()
+        self.session: Session = Session(config)
 
     async def __aenter__(self) -> CodingAgent:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        if self.llm:
-            await self.llm.close()
+        if self.session.llm:
+            await self.session.llm.close()
 
     async def run(self, prompt: str) -> AsyncGenerator[AgentEvent]:
         yield AgentEvent.agent_start(message=prompt)
-        self.context_manager.add_user_message(prompt)
+        self.session.context_manager.add_user_message(prompt)
 
         final_response = None
         async for event in self._loop():
@@ -44,16 +38,18 @@ class CodingAgent(BaseAgent):
         """
         Multiturn interaction with LLM
         """
-        for _ in range(self.config.max_turns):
+        for _ in range(self.session.config.max_turns):
+            _ = self.session.increment_turn()
+
             response_text = ""
 
-            tool_schemas = self.tool_registry.get_schemas()
+            tool_schemas = self.session.tool_registry.get_schemas()
 
             tool_calls: list[ToolCall] = []
             usage: TokenUsage | None = None
 
-            async for event in self.llm.generate(
-                messages=self.context_manager.get_messages(),
+            async for event in self.session.llm.generate(
+                messages=self.session.context_manager.get_messages(),
                 tools=tool_schemas,
                 stream=True,
             ):
@@ -74,7 +70,7 @@ class CodingAgent(BaseAgent):
                         tool_calls.extend(event.tool_calls)
                     usage = event.usage
 
-            self.context_manager.add_assistant_message(
+            self.session.context_manager.add_assistant_message(
                 response_text or "",
                 tool_calls=[
                     {"id": tc.call_id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.args)}}
@@ -94,10 +90,10 @@ class CodingAgent(BaseAgent):
             for tool_call in tool_calls:
                 yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
 
-                result = await self.tool_registry.invoke(
+                result = await self.session.tool_registry.invoke(
                     tool_call.name,
                     tool_call.args,
-                    self.cwd,
+                    self.session.config.cwd,
                 )
 
                 yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
@@ -111,4 +107,4 @@ class CodingAgent(BaseAgent):
                 )
 
             for tr in tool_call_results:
-                self.context_manager.add_tool_result_message(tr.call_id, tr.content)
+                self.session.context_manager.add_tool_result_message(tr.call_id, tr.content)

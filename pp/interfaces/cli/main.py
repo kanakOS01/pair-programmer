@@ -87,7 +87,7 @@ class CLI:
 
             elif event.type == AgentEventType.ToolCallStart:
                 tool_name = event.data.get("name", "Unknown")
-                tool = self.coding_agent.tool_registry.get(tool_name)
+                tool = self.coding_agent.session.tool_registry.get(tool_name)
                 tool_type = tool.type.value if tool else None
 
                 self.tui.tool_call_start(
@@ -96,7 +96,7 @@ class CLI:
 
             elif event.type == AgentEventType.ToolCallDone:
                 tool_name = event.data.get("name", "Unknown")
-                tool = self.coding_agent.tool_registry.get(tool_name)
+                tool = self.coding_agent.session.tool_registry.get(tool_name)
                 tool_type = tool.type.value if tool else None
 
                 self.tui.tool_call_done(
