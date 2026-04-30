@@ -17,28 +17,33 @@ console = get_console()
 
 
 class CLI:
-    def __init__(self) -> None:
+    def __init__(self, config: Config) -> None:
         self.coding_agent: CodingAgent | None = None
-        self.tui: TUI = TUI(console)
+        self.config = config
+        self.tui: TUI = TUI(config, console)
 
-    async def run(self, config: Config, run_type: Literal["one_time", "interactive"] = "interactive", prompt: str = ""):
+    async def run(self, run_type: Literal["one_time", "interactive"] = "interactive", prompt: str = ""):
         if run_type == "one_time":
-            return await self._run_once(config, prompt)
+            return await self._run_once(prompt)
         elif run_type == "interactive":
-            return await self._run_interactive(config)
+            return await self._run_interactive()
 
-    async def _run_once(self, config: Config, prompt: str):
-        async with CodingAgent(config=config) as agent:
+    async def _run_once(self, prompt: str):
+        async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
             return await self._process_message(prompt)
 
-    async def _run_interactive(self, config: Config):
-        async with CodingAgent(config=config) as agent:
+    async def _run_interactive(self):
+        async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
 
             self.tui.welcome(
                 title="Pair Programmer",
-                lines=[f"Model: {config.model_name}", f"cwd: {config.cwd}", "commands: /help /config /approval /model /exit"],
+                lines=[
+                    f"Model: {self.config.model_name}",
+                    f"cwd: {self.config.cwd}",
+                    "commands: /help /config /approval /model /exit",
+                ],
             )
 
             while True:
@@ -106,8 +111,9 @@ class CLI:
                     success=event.data.get("success", False),
                     output=event.data.get("output", ""),
                     error=event.data.get("error", None),
-                    meta=event.data.get("metadata", None),
+                    diff=event.data.get("diff", None),
                     truncated=event.data.get("truncated", False),
+                    meta=event.data.get("metadata", None),
                 )
 
 
@@ -150,14 +156,14 @@ async def main(
             console.print(f"- {error}")
         sys.exit(1)
 
-    cli = CLI()
+    cli = CLI(config)
 
     if prompt:
-        res = await cli.run(run_type="one_time", prompt=prompt, config=config)
+        res = await cli.run(run_type="one_time", prompt=prompt)
         if res is None:
             sys.exit(1)
     else:
-        await cli.run(config=config)
+        await cli.run()
 
 
 if __name__ == "__main__":

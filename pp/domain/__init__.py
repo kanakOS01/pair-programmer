@@ -1,7 +1,7 @@
 from pp.domain.agent import AgentEvent, AgentEventType
 from pp.domain.llm import LLMEvent, LLMEventType, ToolCall, ToolCallDelta
 from pp.domain.message import Message
-from pp.domain.shared import TextDelta, TokenUsage
+from pp.domain.shared import FileDiff, TextDelta, TokenUsage
 from pp.domain.tools import ToolConfirmation, ToolInvocation, ToolResult, ToolType
 
 __all__ = [
@@ -18,4 +18,5 @@ __all__ = [
     "ToolConfirmation",
     "ToolCall",
     "ToolCallDelta",
+    "FileDiff",
 ]

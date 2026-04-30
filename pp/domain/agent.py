@@ -91,7 +91,8 @@ class AgentEvent:
                 "success": result.ok,
                 "error": result.error,
                 "output": result.output,
-                "metadata": result.metadata,
                 "truncated": result.truncated,
+                "diff": result.diff.diff() if result.diff else None,
+                "metadata": result.metadata,
             },
         )

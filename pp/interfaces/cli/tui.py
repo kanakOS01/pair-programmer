@@ -11,7 +11,9 @@ from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
+from pp.config import Config
 from pp.interfaces.cli.themes import DEFAULT_THEME
+from pp.utils.text import truncate_text
 
 # singleton console
 _console: Console | None = None
@@ -25,10 +27,12 @@ def get_console(theme: Theme | None = None) -> Console:
 
 
 class TUI:
-    def __init__(self, console: Console | None = None):
+    def __init__(self, config: Config, console: Console | None = None):
         self.console = console or get_console()
+        self.config = config
         self._assistant_stream_enabled = False
         self._tool_args_by_call_id: dict[str, dict[str, Any]] = {}
+        self._max_block_tokens = 2500
 
     def stream_start(self) -> None:
         self.console.print()
@@ -108,8 +112,9 @@ class TUI:
         success: bool,
         output: str,
         error: str | None,
-        meta: dict[str, Any] | None,
         truncated: bool,
+        diff: str | None,
+        meta: dict[str, Any] | None,
     ) -> None:
         border_style = f"tool.{tool_type}" if tool_type else "tool"
         status_icon = "✔" if success else "✗"
@@ -152,6 +157,13 @@ class TUI:
                     )
                 )
 
+        elif name == "write_file" and success and diff:
+            output_line = output.strip() if output.strip() else Text("<no output>", style="muted")
+            blocks.append(output_line)
+
+            diff_display = truncate_text(diff, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Syntax(diff_display, lexer="diff", theme="nord"))
+
         if truncated:
             blocks.append(Text("NOTE: output truncated...", style="warning"))
 
@@ -180,13 +192,18 @@ class TUI:
         table.add_column(style="code", overflow="fold")
 
         for k, v in self._ordered_args(tool_name, args):
+            if isinstance(v, str) and k in {"content", "old", "new"}:
+                line_count = len(v.splitlines())
+                byte_count = len(v.encode("utf-8", errors="replace"))
+                v = f"{line_count} line(s) • ({byte_count} bytes)"
+
+            if not isinstance(v, str):
+                v = str(v)
             table.add_row(k, v)
         return table
 
     def _ordered_args(self, tool_name: str, args: dict[str, Any]) -> list[tuple[str, Any]]:
-        _PREFERRED_ORDER = {
-            "read_file": ["path", "offset", "limit"],
-        }
+        _PREFERRED_ORDER = {"read_file": ["path", "offset", "limit"], "write_file": ["path", "create_dirs", "content"]}
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])
         ordered: list[tuple[str, Any]] = []

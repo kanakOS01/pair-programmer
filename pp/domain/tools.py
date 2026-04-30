@@ -3,6 +3,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from pp.domain.shared import FileDiff
+
 
 class ToolType(str, Enum):
     READ = "read"
@@ -25,6 +27,7 @@ class ToolResult:
     output: str
     error: str | None = None
     truncated: bool = False
+    diff: FileDiff | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod

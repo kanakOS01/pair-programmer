@@ -36,3 +36,31 @@ def resolve_path_safe(base: str | Path, path: str | Path) -> Path:
         raise ValueError("Access outside base directory not allowed") from None
 
     return resolved
+
+
+def create_dir(path: str | Path) -> Path:
+    """
+    Creates a directory and any necessary parent directories if they don't exist.
+
+    Raises:
+        NotADirectoryError: If the path exists but is not a directory.
+    """
+    path = Path(path)
+
+    if path.exists():
+        if not path.is_dir():
+            raise NotADirectoryError(f"Path {path} is not a directory")
+        return path
+
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def create_parent_dir(path: str | Path) -> Path:
+    """
+    Creates the parent directory of a given path if it doesn't exist.
+
+    Raises:
+        NotADirectoryError: If the parent path exists but is not a directory.
+    """
+    return create_dir(Path(path).parent)
