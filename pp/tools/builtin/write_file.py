@@ -8,7 +8,7 @@ from pp.utils.paths import create_parent_dir, resolve_path
 class WriteFileParams(BaseModel):
     path: str = Field(..., description="Path to file (relative to cwd or absolute)")
     content: str = Field(..., description="Content to be written in the file")
-    create_dirs: bool = Field(True, description="Create parent directories if they don't exist. Defaults to True.")
+    create_dirs: bool = Field(True, description="Create parent directories if they don't exist. Defaults to true.")
 
 
 class WriteFileTool(Tool):

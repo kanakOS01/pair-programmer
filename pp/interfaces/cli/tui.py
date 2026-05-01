@@ -157,7 +157,7 @@ class TUI:
                     )
                 )
 
-        elif name == "write_file" and success and diff:
+        elif name in ("write_file", "edit_file") and success and diff:
             output_line = output.strip() if output.strip() else Text("<no output>", style="muted")
             blocks.append(output_line)
 
@@ -192,7 +192,7 @@ class TUI:
         table.add_column(style="code", overflow="fold")
 
         for k, v in self._ordered_args(tool_name, args):
-            if isinstance(v, str) and k in {"content", "old", "new"}:
+            if isinstance(v, str) and k in {"content", "old_str", "new_str"}:
                 line_count = len(v.splitlines())
                 byte_count = len(v.encode("utf-8", errors="replace"))
                 v = f"{line_count} line(s) • ({byte_count} bytes)"
@@ -203,7 +203,11 @@ class TUI:
         return table
 
     def _ordered_args(self, tool_name: str, args: dict[str, Any]) -> list[tuple[str, Any]]:
-        _PREFERRED_ORDER = {"read_file": ["path", "offset", "limit"], "write_file": ["path", "create_dirs", "content"]}
+        _PREFERRED_ORDER = {
+            "read_file": ["path", "offset", "limit"],
+            "write_file": ["path", "create_dirs", "content"],
+            "edit_file": ["path", "replace_all", "old_str", "new_str"],
+        }
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])
         ordered: list[tuple[str, Any]] = []

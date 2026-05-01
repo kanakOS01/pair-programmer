@@ -4,7 +4,7 @@ DEFAULT_THEME = Theme(
     {
         # core roles
         "user": "bold cyan",
-        "assistant": "white",
+        "assistant": "dim white",
         "system": "dim white",
         "agent": "bold magenta",
         # streaming / tokens
