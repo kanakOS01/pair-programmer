@@ -19,7 +19,7 @@ class ShellToolParams(BaseModel):
 class ShellTool(Tool):
     name = "shell"
     description = "Execute a shell command"
-    type = ToolType.WRITE
+    type = ToolType.SHELL
     schema = ShellToolParams
 
     MAX_OUTPUT_SIZE_BYTES = 1024 * 100  # 100 kb

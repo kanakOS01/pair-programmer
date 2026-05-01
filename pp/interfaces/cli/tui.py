@@ -134,6 +134,11 @@ class TUI:
 
         args = self._tool_args_by_call_id.get(call_id) or {}
 
+        args_renderable = self._render_args_table(name, args) if args else None
+        if args_renderable:
+            blocks.append(args_renderable)
+            blocks.append(Text())
+
         path = None
         if isinstance(meta, dict) and isinstance(meta.get("path"), str):
             path = meta.get("path")
@@ -192,6 +197,31 @@ class TUI:
             output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
             blocks.append(Syntax(output_display, lexer="zsh", theme="nord", word_wrap=True))
 
+        elif name == "list_dir" and success:
+            path_param = meta.get("path") if meta else None
+            entries = meta.get("entries") if meta else None
+
+            summary = []
+            if isinstance(path_param, str):
+                summary.append(path_param)
+            if isinstance(entries, int):
+                summary.append(f"{entries} entrie(s)")
+
+            if summary:
+                blocks.append(Text(" • ".join(summary), style="muted"))
+
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Syntax(output_display, lexer="text", theme="nord", word_wrap=True))
+
+        if error and not success:
+            blocks.append(Text(error, style="error"))
+
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            if output_display.strip():
+                blocks.append(Syntax(output_display, lexer="text", theme="nord", word_wrap=True))
+            else:
+                blocks.append(Text("<no output>", style="muted"))
+
         if truncated:
             blocks.append(Text("\nNOTE: output truncated...", style="warning"))
 
@@ -201,8 +231,12 @@ class TUI:
             ("  ", "muted"),
             (f"#{call_id[:8]}", "muted"),
         )
+
+        if not success:
+            blocks.append(Text(error or "", style="error"))
+
         panel = Panel(
-            Group(*blocks) if success else Text(error or ""),
+            Group(*blocks),
             title=title,
             title_align="left",
             subtitle=Text("done" if success else "failed", style=status_style),
@@ -236,6 +270,7 @@ class TUI:
             "write_file": ["path", "create_dirs", "content"],
             "edit_file": ["path", "replace_all", "old_str", "new_str"],
             "shell": ["command", "timeout", "cwd"],
+            "list_dir": ["path", "max_depth", "include_hidden"],
         }
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])
