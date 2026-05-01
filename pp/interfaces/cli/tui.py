@@ -4,6 +4,7 @@ from typing import Any
 
 from rich import box
 from rich.console import Console, Group, RenderableType
+from rich.live import Live
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
@@ -33,6 +34,7 @@ class TUI:
         self._assistant_stream_enabled = False
         self._tool_args_by_call_id: dict[str, dict[str, Any]] = {}
         self._max_block_tokens = 2500
+        self._live_tool_call: Live | None = None
 
     def stream_start(self) -> None:
         self.console.print()
@@ -82,7 +84,7 @@ class TUI:
 
     def tool_call_start(self, *, call_id: str, name: str, tool_type: str | None, args: dict[str, Any]) -> None:
         self._tool_args_by_call_id[call_id] = args
-        border_style = f"tool.{name}" if tool_type else "tool"
+        border_style = f"tool.{tool_type}" if tool_type else "tool"
 
         title = Text.assemble(
             ("⏺ ", "muted"),
@@ -101,7 +103,11 @@ class TUI:
             padding=(1, 2),
         )
         self.console.print()
-        self.console.print(panel)
+        if self._live_tool_call:
+            self._live_tool_call.stop()
+
+        self._live_tool_call = Live(panel, console=self.console, transient=True)
+        self._live_tool_call.start()
 
     def tool_call_done(
         self,
@@ -117,7 +123,11 @@ class TUI:
         exit_code: int | None,
         meta: dict[str, Any] | None,
     ) -> None:
-        border_style = f"tool.{name}" if tool_type else "tool"
+        if self._live_tool_call:
+            self._live_tool_call.stop()
+            self._live_tool_call = None
+
+        border_style = f"tool.{tool_type}" if tool_type else "tool"
         status_icon = "✔" if success else "✗"
         status_style = "success" if success else "error"
         blocks: list[RenderableType] = []
