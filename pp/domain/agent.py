@@ -93,6 +93,7 @@ class AgentEvent:
                 "output": result.output,
                 "truncated": result.truncated,
                 "diff": result.diff.diff() if result.diff else None,
+                "exit_code": result.exit_code,
                 "metadata": result.metadata,
             },
         )

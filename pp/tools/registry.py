@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from pp.config import Config
 from pp.domain import ToolInvocation, ToolResult
 from pp.tools.base import Tool
 from pp.tools.builtin import get_builtin_tools
@@ -11,11 +12,11 @@ from pp.tools.builtin import get_builtin_tools
 logger = logging.getLogger(__name__)
 
 
-def create_default_registry() -> ToolRegistry:
+def create_default_registry(config: Config) -> ToolRegistry:
     registry = ToolRegistry()
 
     for tool in get_builtin_tools():
-        registry.register(tool())
+        registry.register(tool(config))
 
     return registry
 

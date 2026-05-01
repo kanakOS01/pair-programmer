@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 from pydantic.json_schema import model_json_schema
 
+from pp.config.config import Config
 from pp.domain import ToolConfirmation, ToolInvocation, ToolResult, ToolType
 
 
@@ -13,6 +14,9 @@ class Tool(ABC):
     name: str
     description: str
     type: ToolType
+
+    def __init__(self, config: Config) -> None:
+        self.config = config
 
     @property
     @abstractmethod

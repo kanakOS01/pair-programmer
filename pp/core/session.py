@@ -12,7 +12,7 @@ class Session:
         self.config = config
         self.llm = OpenRouterLLM(config)
         self.context_manager = ContextManager(config)
-        self.tool_registry = create_default_registry()
+        self.tool_registry = create_default_registry(config)
         self.session_id = str(uuid.uuid4())
         self.created_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)

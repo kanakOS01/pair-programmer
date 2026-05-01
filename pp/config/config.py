@@ -15,7 +15,7 @@ class ModelConfig(BaseModel):
 
 
 class ShellEnvironmentPolicy(BaseModel):
-    ignore_default_excludes: bool = False
+    ignore_default_excludes: bool = False  # tell whether to ignore default excludes like secret with *KEY*
     exclude_patterns: list[str] = Field(default_factory=lambda: ["*KEY*", "*TOKEN*", "*SECRET*"])
     set_vars: dict[str, str] = Field(default_factory=dict)
 
@@ -32,6 +32,7 @@ class ApprovalPolicy(str, Enum):
 class Config(BaseModel):
     model: ModelConfig = Field(default_factory=ModelConfig)
     cwd: Path = Field(default_factory=Path.cwd)
+    shell_env_policy: ShellEnvironmentPolicy = Field(default_factory=ShellEnvironmentPolicy)
 
     max_turns: int = 100
     retries: int = 3

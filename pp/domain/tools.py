@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -28,18 +30,15 @@ class ToolResult:
     error: str | None = None
     truncated: bool = False
     diff: FileDiff | None = None
+    exit_code: int | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def error_result(cls, error: str, output: str = "", **kwargs: Any):
-        return cls(
-            ok=False,
-            output=output,
-            error=error,
-        )
+    def error_result(cls, error: str, output: str = "", **kwargs: Any) -> ToolResult:
+        return cls(ok=False, output=output, error=error, **kwargs)
 
     @classmethod
-    def success_result(cls, output: str, **kwargs: Any):
+    def success_result(cls, output: str, **kwargs: Any) -> ToolResult:
         return cls(ok=True, output=output, **kwargs)
 
     def to_model_output(self) -> str:

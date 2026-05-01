@@ -82,7 +82,7 @@ class TUI:
 
     def tool_call_start(self, *, call_id: str, name: str, tool_type: str | None, args: dict[str, Any]) -> None:
         self._tool_args_by_call_id[call_id] = args
-        border_style = f"tool.{tool_type}" if tool_type else "tool"
+        border_style = f"tool.{name}" if tool_type else "tool"
 
         title = Text.assemble(
             ("⏺ ", "muted"),
@@ -114,12 +114,15 @@ class TUI:
         error: str | None,
         truncated: bool,
         diff: str | None,
+        exit_code: int | None,
         meta: dict[str, Any] | None,
     ) -> None:
-        border_style = f"tool.{tool_type}" if tool_type else "tool"
+        border_style = f"tool.{name}" if tool_type else "tool"
         status_icon = "✔" if success else "✗"
         status_style = "success" if success else "error"
         blocks: list[RenderableType] = []
+
+        args = self._tool_args_by_call_id.get(call_id) or {}
 
         path = None
         if isinstance(meta, dict) and isinstance(meta.get("path"), str):
@@ -146,9 +149,10 @@ class TUI:
 
                 blocks.append(Text(" ".join(header_parts), style="muted"))
 
+                code_display = truncate_text(code, self.config.model_name, max_tokens=self._max_block_tokens)
                 blocks.append(
                     Syntax(
-                        code,
+                        code_display,
                         language,
                         theme="nord",
                         line_numbers=True,
@@ -156,6 +160,9 @@ class TUI:
                         word_wrap=False,
                     )
                 )
+            else:
+                output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+                blocks.append(Text(output_display))
 
         elif name in ("write_file", "edit_file") and success and diff:
             output_line = output.strip() if output.strip() else Text("<no output>", style="muted")
@@ -164,8 +171,19 @@ class TUI:
             diff_display = truncate_text(diff, self.config.model_name, max_tokens=self._max_block_tokens)
             blocks.append(Syntax(diff_display, lexer="diff", theme="nord"))
 
+        elif name == "shell" and success:
+            cmd = args.get("command")
+            if isinstance(cmd, str) and cmd.strip():
+                blocks.append(Text(f"$ {cmd.strip()}", style="muted"))
+
+            if exit_code is not None:
+                blocks.append(Text(f"Exit code: {exit_code}", style="muted"))
+
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Syntax(output_display, lexer="zsh", theme="nord", word_wrap=True))
+
         if truncated:
-            blocks.append(Text("NOTE: output truncated...", style="warning"))
+            blocks.append(Text("\nNOTE: output truncated...", style="warning"))
 
         title = Text.assemble(
             (f"{status_icon} ", status_style),
@@ -207,6 +225,7 @@ class TUI:
             "read_file": ["path", "offset", "limit"],
             "write_file": ["path", "create_dirs", "content"],
             "edit_file": ["path", "replace_all", "old_str", "new_str"],
+            "shell": ["command", "timeout", "cwd"],
         }
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])
@@ -224,23 +243,18 @@ class TUI:
         return ordered
 
     def _extract_read_file_code(self, text: str) -> tuple[int, str] | None:
-        body = text
-        header_match = re.match(r"^Showing lines (\d+)-(\d+) of  (\d+)\n\n", text)
-
-        if header_match:
-            body = text[header_match.end() :]
-
         code_lines: list[str] = []
         start_line: int | None = None
 
-        for line in body.splitlines():
+        for line in text.splitlines():
             m = re.match(r"^\s*(\d+) \| (.*)$", line)
-            if not m:
-                return None
-            line_no = int(m.group(1))
-            if start_line is None:
-                start_line = line_no
-            code_lines.append(m.group(2))
+            if m:
+                line_no = int(m.group(1))
+                if start_line is None:
+                    start_line = line_no
+                code_lines.append(m.group(2))
+            else:
+                pass
 
         if start_line is None:
             return None

@@ -5,6 +5,7 @@ from pp.tools.builtin.grep import GrepTool
 from pp.tools.builtin.list_dir import ListDirTool
 from pp.tools.builtin.read_file import ReadFileTool
 from pp.tools.builtin.read_url import ReadUrlTool
+from pp.tools.builtin.shell import ShellTool
 from pp.tools.builtin.web_search import WebSearchTool
 from pp.tools.builtin.write_file import WriteFileTool
 
@@ -17,6 +18,7 @@ __all__ = [
     "WebSearchTool",
     "WriteFileTool",
     "EditFileTool",
+    "ShellTool",
 ]
 
 
@@ -30,4 +32,5 @@ def get_builtin_tools() -> list[type(Tool)]:
         WebSearchTool,
         WriteFileTool,
         EditFileTool,
+        ShellTool,
     ]
