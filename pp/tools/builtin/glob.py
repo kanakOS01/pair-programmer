@@ -51,12 +51,11 @@ class GlobTool(Tool):
 
         truncated = False
 
-        truncated = False
         if len(matches) > self.MAX_RESULTS:
             matches = matches[: self.MAX_RESULTS]
             truncated = True
 
-        relative = [str(p.relative_to(invocation.cwd) for p in matches)]
+        relative = [str(p.relative_to(invocation.cwd)) for p in matches]
         if truncated:
             relative.append("\n... [truncated]")
 

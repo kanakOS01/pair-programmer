@@ -71,6 +71,8 @@ class GrepTool(Tool):
             )
         except subprocess.TimeoutExpired:
             return ToolResult.error_result("Search timed out")
+        except FileNotFoundError:
+            return ToolResult.error_result("ripgrep (rg) is not installed on the system. Please install it to use the grep tool.")
 
         # rg exit codes:
         # 0 = match found

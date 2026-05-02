@@ -213,6 +213,22 @@ class TUI:
             output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
             blocks.append(Syntax(output_display, lexer="text", theme="nord", word_wrap=True))
 
+        elif name in ("grep", "glob") and success:
+            matches = meta.get("matches") if meta else None
+            path_param = meta.get("path") if meta else None
+
+            summary = []
+            if isinstance(path_param, str):
+                summary.append(path_param)
+            if isinstance(matches, int):
+                summary.append(f"{matches} match(es)")
+
+            if summary:
+                blocks.append(Text(" • ".join(summary), style="muted"))
+
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Syntax(output_display, lexer="text", theme="nord", word_wrap=True))
+
         if error and not success:
             blocks.append(Text(error, style="error"))
 
@@ -271,6 +287,8 @@ class TUI:
             "edit_file": ["path", "replace_all", "old_str", "new_str"],
             "shell": ["command", "timeout", "cwd"],
             "list_dir": ["path", "max_depth", "include_hidden"],
+            "grep": ["pattern", "path", "case_insensitive"],
+            "glob": ["pattern", "path"],
         }
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])
