@@ -64,3 +64,11 @@ def create_parent_dir(path: str | Path) -> Path:
         NotADirectoryError: If the parent path exists but is not a directory.
     """
     return create_dir(Path(path).parent)
+
+
+def get_config_dir() -> Path:
+    return Path.home() / ".pair-programmer"
+
+
+def get_data_dir() -> Path:
+    return Path.home() / ".pair-programmer" / "user"

@@ -322,6 +322,42 @@ class TUI:
                 output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
                 blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
 
+        elif name == "memory" and success:
+            action = args.get("action")
+            key = args.get("key")
+            found = meta.get("found", False) if meta else None
+
+            summary = []
+            if isinstance(action, str):
+                summary.append("action")
+            if isinstance(key, str):
+                summary.append("key")
+            if isinstance(found, bool) and found is not None:
+                summary.append("Found" if found else "Not found")
+
+            if summary:
+                blocks.append(Text(" • ".join(summary), style="muted"))
+
+            if action == "list" and isinstance(meta, dict) and "entries" in meta:
+                entries = meta["entries"]
+                if entries:
+                    table = Table(box=box.ROUNDED, show_header=True, header_style="bold")
+                    table.add_column("Key", style="code")
+                    table.add_column("Value")
+
+                    for entry in entries:
+                        val = entry.get("value", "")
+                        if len(val) > 255:
+                            val = val[:252] + "..."
+                        table.add_row(entry.get("key", ""), val)
+
+                    blocks.append(table)
+                else:
+                    blocks.append(Text("No memory entries found", style="muted"))
+            else:
+                output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+                blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
+
         if error and not success:
             blocks.append(Text(error, style="error"))
 
@@ -384,6 +420,7 @@ class TUI:
             "grep": ["pattern", "path", "case_insensitive"],
             "glob": ["pattern", "path"],
             "todos": ["action", "message", "messages", "id"],
+            "memory": ["action", "key", "value"],
         }
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])

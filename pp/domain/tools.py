@@ -66,3 +66,11 @@ class TodoAction(str, Enum):
 class TodoStatus(str, Enum):
     PENDING = "pending"
     DONE = "done"
+
+
+class MemoryAction(str, Enum):
+    SET = "set"
+    GET = "get"
+    DELETE = "delete"
+    LIST = "list"
+    CLEAR = "clear"

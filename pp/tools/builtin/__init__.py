@@ -4,6 +4,7 @@ from pp.tools.builtin.edit_file import EditFileTool
 from pp.tools.builtin.glob import GlobTool
 from pp.tools.builtin.grep import GrepTool
 from pp.tools.builtin.list_dir import ListDirTool
+from pp.tools.builtin.memory import MemoryTool
 from pp.tools.builtin.read_file import ReadFileTool
 from pp.tools.builtin.read_url import ReadUrlTool
 from pp.tools.builtin.shell import ShellTool
@@ -23,6 +24,7 @@ __all__ = [
     "ApplyPatchTool",
     "ShellTool",
     "TodoTool",
+    "MemoryTool",
 ]
 
 
@@ -39,4 +41,5 @@ def get_builtin_tools() -> list[type(Tool)]:
         ApplyPatchTool,
         ShellTool,
         TodoTool,
+        MemoryTool,
     ]

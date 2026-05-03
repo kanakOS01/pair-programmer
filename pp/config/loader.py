@@ -3,23 +3,15 @@ from pathlib import Path
 from typing import Any
 
 import tomli
-from platformdirs import user_data_dir
 
 from pp.config.config import Config
 from pp.utils.errors import ConfigError
+from pp.utils.paths import get_config_dir
 
 logger = logging.getLogger(__name__)
 
 AGENT_MD_FILE = "AGENT.md"
 CONFIG_FILE_NAME = "config.toml"
-
-
-def get_config_dir() -> Path:
-    return Path.home() / ".pair-programmer"
-
-
-def get_data_dir() -> Path:
-    return Path(user_data_dir(".pair-programmer"))
 
 
 def get_system_config_path() -> Path:
