@@ -31,7 +31,7 @@ class ReadUrlTool(Tool):
             return ToolResult.error_result(str(e))
 
         try:
-            async with httpx.AsyncClient(timeout=params.timeout, follow_redirects=False) as client:
+            async with httpx.AsyncClient(timeout=params.timeout, follow_redirects=True) as client:
                 resp = await client.get(params.url)
                 resp.raise_for_status()
         except httpx.TimeoutException:

@@ -36,7 +36,7 @@ class TUI:
         self.config = config
         self._assistant_stream_enabled = False
         self._tool_args_by_call_id: dict[str, dict[str, Any]] = {}
-        self._max_block_tokens = 2500
+        self._max_block_tokens = 250
         self._live_tool_call: Live | None = None
         self._live_stream: Live | None = None
         self._stream_content: str = ""
@@ -257,6 +257,25 @@ class TUI:
                 summary.append(query)
             if isinstance(results, int):
                 summary.append(f"{results} result(s)")
+
+            if summary:
+                blocks.append(Text(" • ".join(summary), style="muted"))
+
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
+
+        elif name == "read_url" and success:
+            url = args.get("url")
+            status = str(meta.get("status")) if meta else None
+            bytes_read = str(meta.get("bytes")) if meta else None
+
+            summary = []
+            if isinstance(url, str):
+                summary.append(url)
+            if isinstance(status, str):
+                summary.append(f"{status}")
+            if isinstance(bytes_read, str):
+                summary.append(f"{bytes_read} bytes")
 
             if summary:
                 blocks.append(Text(" • ".join(summary), style="muted"))
