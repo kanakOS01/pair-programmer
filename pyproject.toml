@@ -14,6 +14,9 @@ dependencies = [
     "typer>=0.21.1",
 ]
 
+[project.scripts]
+pp = "pp.interfaces.cli.main:app"
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
@@ -36,3 +39,4 @@ indent-style = "space"
 
 [tool.uv]
 exclude-newer = "30 days"
+package = true
