@@ -179,7 +179,7 @@ class TUI:
                 output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
                 blocks.append(Text(output_display))
 
-        elif name in ("write_file", "edit_file") and success and diff:
+        elif name in ("write_file", "edit_file", "apply_patch") and success and diff:
             output_line = output.strip() if output.strip() else Text("<no output>", style="muted")
             blocks.append(output_line)
 
@@ -248,9 +248,6 @@ class TUI:
             (f"#{call_id[:8]}", "muted"),
         )
 
-        if not success:
-            blocks.append(Text(error or "", style="error"))
-
         panel = Panel(
             Group(*blocks),
             title=title,
@@ -275,6 +272,9 @@ class TUI:
                 byte_count = len(v.encode("utf-8", errors="replace"))
                 v = f"{line_count} line(s) • ({byte_count} bytes)"
 
+            if k == "patches" and isinstance(v, list):
+                v = f"{len(v)} patch(es)"
+
             if not isinstance(v, str):
                 v = str(v)
             table.add_row(k, v)
@@ -285,6 +285,7 @@ class TUI:
             "read_file": ["path", "offset", "limit"],
             "write_file": ["path", "create_dirs", "content"],
             "edit_file": ["path", "replace_all", "old_str", "new_str"],
+            "apply_patch": ["path", "patches"],
             "shell": ["command", "timeout", "cwd"],
             "list_dir": ["path", "max_depth", "include_hidden"],
             "grep": ["pattern", "path", "case_insensitive"],

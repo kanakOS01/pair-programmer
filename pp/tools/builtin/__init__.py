@@ -1,4 +1,5 @@
 from pp.tools.base import Tool
+from pp.tools.builtin.apply_patch import ApplyPatchTool
 from pp.tools.builtin.edit_file import EditFileTool
 from pp.tools.builtin.glob import GlobTool
 from pp.tools.builtin.grep import GrepTool
@@ -18,6 +19,7 @@ __all__ = [
     "WebSearchTool",
     "WriteFileTool",
     "EditFileTool",
+    "ApplyPatchTool",
     "ShellTool",
 ]
 
@@ -32,5 +34,6 @@ def get_builtin_tools() -> list[type(Tool)]:
         WebSearchTool,
         WriteFileTool,
         EditFileTool,
+        ApplyPatchTool,
         ShellTool,
     ]
