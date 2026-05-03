@@ -5,6 +5,7 @@ from typing import Any
 from rich import box
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
@@ -28,6 +29,8 @@ def get_console(theme: Theme | None = None) -> Console:
 
 
 class TUI:
+    _CODE_THEME = "nord"
+
     def __init__(self, config: Config, console: Console | None = None):
         self.console = console or get_console()
         self.config = config
@@ -35,16 +38,32 @@ class TUI:
         self._tool_args_by_call_id: dict[str, dict[str, Any]] = {}
         self._max_block_tokens = 2500
         self._live_tool_call: Live | None = None
+        self._live_stream: Live | None = None
+        self._stream_content: str = ""
 
     def stream_start(self) -> None:
         self.console.print()
         self.console.print(Rule(Text("Assistant", style="assistant"), style="assistant"))
         self._assistant_stream_enabled = True
+        self._stream_content = ""
+        self._live_stream = Live(
+            Markdown(self._stream_content, code_theme=self._CODE_THEME), console=self.console, refresh_per_second=15
+        )
+        self._live_stream.start()
 
     def stream_delta(self, content: str) -> None:
-        self.console.print(content, end="", markup=False)
+        self._stream_content += content
+        if self._live_stream:
+            self._live_stream.update(Markdown(self._stream_content, code_theme=self._CODE_THEME))
+        else:
+            self.console.print(content, end="", markup=False)
 
     def stream_end(self) -> None:
+        if self._live_stream:
+            self._live_stream.update(Markdown(self._stream_content, code_theme=self._CODE_THEME))
+            self._live_stream.stop()
+            self._live_stream = None
+
         if self._assistant_stream_enabled:
             self.console.print()
 
@@ -169,7 +188,7 @@ class TUI:
                     Syntax(
                         code_display,
                         language,
-                        theme="nord",
+                        theme=self._CODE_THEME,
                         line_numbers=True,
                         start_line=start_line or 1,
                         word_wrap=False,
@@ -184,7 +203,7 @@ class TUI:
             blocks.append(output_line)
 
             diff_display = truncate_text(diff, self.config.model_name, max_tokens=self._max_block_tokens)
-            blocks.append(Syntax(diff_display, lexer="diff", theme="nord"))
+            blocks.append(Syntax(diff_display, lexer="diff", theme=self._CODE_THEME))
 
         elif name == "shell" and success:
             cmd = args.get("command")
@@ -195,7 +214,7 @@ class TUI:
                 blocks.append(Text(f"Exit code: {exit_code}", style="muted"))
 
             output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
-            blocks.append(Syntax(output_display, lexer="zsh", theme="nord", word_wrap=True))
+            blocks.append(Syntax(output_display, lexer="zsh", theme=self._CODE_THEME, word_wrap=True))
 
         elif name == "list_dir" and success:
             path_param = meta.get("path") if meta else None
@@ -211,7 +230,7 @@ class TUI:
                 blocks.append(Text(" • ".join(summary), style="muted"))
 
             output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
-            blocks.append(Syntax(output_display, lexer="text", theme="nord", word_wrap=True))
+            blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
 
         elif name in ("grep", "glob") and success:
             matches = meta.get("matches") if meta else None
@@ -227,14 +246,30 @@ class TUI:
                 blocks.append(Text(" • ".join(summary), style="muted"))
 
             output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
-            blocks.append(Syntax(output_display, lexer="text", theme="nord", word_wrap=True))
+            blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
+
+        elif name == "web_search" and success:
+            query = args.get("query")
+            results = meta.get("results") if meta else None
+
+            summary = []
+            if isinstance(query, str):
+                summary.append(query)
+            if isinstance(results, int):
+                summary.append(f"{results} result(s)")
+
+            if summary:
+                blocks.append(Text(" • ".join(summary), style="muted"))
+
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
 
         if error and not success:
             blocks.append(Text(error, style="error"))
 
             output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
             if output_display.strip():
-                blocks.append(Syntax(output_display, lexer="text", theme="nord", word_wrap=True))
+                blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
             else:
                 blocks.append(Text("<no output>", style="muted"))
 
