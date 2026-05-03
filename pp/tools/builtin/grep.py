@@ -1,4 +1,6 @@
-import subprocess
+import fnmatch
+import os
+import re
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -16,17 +18,13 @@ class GrepParams(BaseModel):
 
 class GrepTool(Tool):
     name = "grep"
-    description = (
-        "Search for a regex pattern in file contents. Returns matching lines with file paths and line numbers. "
-        "Uses ripgrep (rg), sandboxed to workspace."
-    )
+    description = "Search for a regex pattern in file contents. Returns matching lines with file paths and line numbers."
     type = ToolType.READ
     schema = GrepParams
 
     MAX_PATTERN_LENGTH = 500
     MAX_RESULTS = 200
-    MAX_FILESIZE_STR = "1M"
-    TIMEOUT_SECONDS = 2
+    MAX_FILESIZE_BYTES = 1024 * 1024  # 1MB
 
     DENY_GLOBS = [
         "*.lock",
@@ -57,76 +55,70 @@ class GrepTool(Tool):
             return ToolResult.error_result(f"Path does not exist: {path}")
 
         if not params.pattern or len(params.pattern) > self.MAX_PATTERN_LENGTH:
-            return ToolResult.error_result("Invalid or too long regext pattern")
-
-        cmd = self._build_rg_command(params.pattern, path, params.case_insensitive)
+            return ToolResult.error_result("Invalid or too long regex pattern")
 
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=invocation.cwd,
-                capture_output=True,
-                text=True,
-                timeout=self.TIMEOUT_SECONDS,
-            )
-        except subprocess.TimeoutExpired:
-            return ToolResult.error_result("Search timed out")
-        except FileNotFoundError:
-            return ToolResult.error_result("ripgrep (rg) is not installed on the system. Please install it to use the grep tool.")
+            flags = re.IGNORECASE if params.case_insensitive else 0
+            regex = re.compile(params.pattern, flags)
+        except re.error as e:
+            return ToolResult.error_result(f"Invalid regex pattern: {e}")
 
-        # rg exit codes:
-        # 0 = match found
-        # 1 = no matches
-        # 2 = error
-        if result.returncode == 2:
-            return ToolResult.error_result(result.stderr.strip() or "ripgrep internal error")
+        files_to_search = []
+        if path.is_file():
+            files_to_search.append(path)
+        else:
+            for root, dirs, files in os.walk(path):
+                # Modify dirs in-place to skip denied directories
+                dirs[:] = [d for d in dirs if d not in self.DENY_DIRS]
 
-        output = result.stdout.strip()
+                for file in files:
+                    if any(fnmatch.fnmatch(file, glob) for glob in self.DENY_GLOBS):
+                        continue
+                    files_to_search.append(Path(root) / file)
 
-        if not output:
+        lines = []
+        truncated = False
+
+        for file_path in files_to_search:
+            try:
+                if file_path.stat().st_size > self.MAX_FILESIZE_BYTES:
+                    continue
+            except OSError:
+                continue
+
+            try:
+                try:
+                    rel_path = file_path.relative_to(invocation.cwd)
+                except ValueError:
+                    rel_path = file_path
+
+                prefix = f"{rel_path}:"
+
+                with open(file_path, "r", encoding="utf-8") as f:
+                    for line_idx, line in enumerate(f, 1):
+                        if regex.search(line):
+                            lines.append(f"{prefix}{line_idx}:{line.rstrip('\n')}")
+                            if len(lines) >= self.MAX_RESULTS:
+                                truncated = True
+                                break
+            except (UnicodeDecodeError, OSError):
+                # Skip binary files or files that can't be read
+                pass
+
+            if truncated:
+                break
+
+        if not lines:
             return ToolResult.success_result(
                 f"No matches found for pattern {params.pattern}",
                 metadata={"matches": 0, "path": str(path)},
             )
 
-        lines = output.splitlines()
-
-        truncated = False
-        if len(lines) > self.MAX_RESULTS:
-            lines = lines[: self.MAX_RESULTS]
+        matches_count = len(lines)
+        if truncated:
             lines.append("\n... [truncated]")
-            truncated = True
 
         return ToolResult.success_result(
             "\n".join(lines),
-            metadata={"matches": len(lines), "truncated": truncated, "path": str(path)},
+            metadata={"matches": matches_count, "truncated": truncated, "path": str(path)},
         )
-
-    # ======= Helpers ======= #
-
-    def _build_rg_command(self, pattern: str, path: Path, case_insensitive: bool) -> list[str]:
-        cmd = [
-            "rg",
-            "--line-number",
-            "--no-heading",
-            "--color",
-            "never",
-            "--max-count",
-            str(self.MAX_RESULTS),
-            "--max-filesize",
-            self.MAX_FILESIZE_STR,
-        ]
-
-        if case_insensitive:
-            cmd.append("--ignore-case")
-
-        # exclude directories
-        for d in self.DENY_DIRS:
-            cmd.extend(["--glob", f"!{d}/**"])
-
-        # exclude file patterns
-        for g in self.DENY_GLOBS:
-            cmd.extend(["--glob", f"!{g}"])
-
-        cmd.extend([pattern, str(path)])
-        return cmd
