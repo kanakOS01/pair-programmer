@@ -283,6 +283,45 @@ class TUI:
             output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
             blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
 
+        elif name == "todos" and success:
+            action = args.get("action")
+
+            summary = []
+            if isinstance(action, str):
+                summary.append(f"Action: {action}")
+
+            if action == "add" and args.get("message"):
+                summary.append(str(args.get("message")))
+            elif action == "bulk_add" and args.get("messages"):
+                messages = args.get("messages")
+                if isinstance(messages, list):
+                    summary.append(f"{len(messages)} tasks")
+            elif action == "done" and args.get("id"):
+                summary.append(f"ID: {args.get('id')}")
+
+            if summary:
+                blocks.append(Text(" • ".join(summary), style="muted"))
+
+            if action == "list" and isinstance(meta, dict) and "todos" in meta:
+                todos_list = meta["todos"]
+                if todos_list:
+                    table = Table(box=box.ROUNDED, show_header=True, header_style="bold")
+                    table.add_column("ID", style="muted")
+                    table.add_column("Status")
+                    table.add_column("Message")
+
+                    for todo in todos_list:
+                        status = todo.get("status", "")
+                        status_text = Text(status, style="success" if status == "done" else "warning")
+                        table.add_row(todo.get("id", ""), status_text, todo.get("message", ""))
+
+                    blocks.append(table)
+                else:
+                    blocks.append(Text("No todos found", style="muted"))
+            else:
+                output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+                blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
+
         if error and not success:
             blocks.append(Text(error, style="error"))
 
@@ -344,6 +383,7 @@ class TUI:
             "list_dir": ["path", "max_depth", "include_hidden"],
             "grep": ["pattern", "path", "case_insensitive"],
             "glob": ["pattern", "path"],
+            "todos": ["action", "message", "messages", "id"],
         }
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])

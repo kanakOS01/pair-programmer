@@ -53,3 +53,16 @@ class ToolConfirmation:
     tool_name: str
     params: dict[str, Any]
     description: str
+
+
+class TodoAction(str, Enum):
+    ADD = "add"
+    DONE = "done"
+    LIST = "list"
+    CLEAR = "clear"
+    BULK_ADD = "bulk_add"
+
+
+class TodoStatus(str, Enum):
+    PENDING = "pending"
+    DONE = "done"
