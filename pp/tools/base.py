@@ -14,13 +14,14 @@ class Tool(ABC):
     name: str
     description: str
     type: ToolType
+    schema: type[BaseModel] | dict[str, Any]
 
     def __init__(self, config: Config) -> None:
         self.config = config
 
-    @property
-    @abstractmethod
-    def schema(self) -> dict[str, Any] | type[BaseModel]: ...
+    # @property
+    # @abstractmethod
+    # def schema(self) -> dict[str, Any] | type[BaseModel]: ...
 
     @abstractmethod
     async def execute(self, invocation: ToolInvocation) -> ToolResult: ...

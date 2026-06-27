@@ -3,12 +3,13 @@ from typing import Any
 from pp.config import Config
 from pp.domain import Message
 from pp.prompts.system import get_system_prompt
+from pp.tools.base import Tool
 from pp.utils.text import count_tokens
 
 
 class ContextManager:
-    def __init__(self, config: Config) -> None:
-        self._system_prompt = get_system_prompt(config)
+    def __init__(self, config: Config, user_memory: str | None, tools: list[Tool] | None) -> None:
+        self._system_prompt = get_system_prompt(config, user_memory, tools)
         self._model_name = "stepfun/step-3.5-flash:free"
         self._messages: list[Message] = []
 

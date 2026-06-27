@@ -12,18 +12,13 @@ def get_system_prompt(
 ) -> str:
     parts = []
 
-    # Identity and role
     parts.append(_get_identity_section())
-    # Environment
     parts.append(_get_environment_section(config))
 
     if tools:
         parts.append(_get_tool_guidelines_section(tools))
 
-    # AGENTS.md spec
     parts.append(_get_agents_md_section())
-
-    # Security guidelines
     parts.append(_get_security_section())
 
     if config.developer_instructions:
@@ -35,7 +30,6 @@ def get_system_prompt(
     if user_memory:
         parts.append(_get_memory_section(user_memory))
 
-    # Operational guidelines
     parts.append(_get_operational_section())
 
     return "\n\n".join(parts)
