@@ -91,7 +91,6 @@ class SubagentTool(Tool):
             developer_instructions=self.subagent_config.goal_prompt,
             user_instructions=None,
             debug=self.config.debug,
-            subagents={},
         )
 
         from pp.agents.coding import CodingAgent

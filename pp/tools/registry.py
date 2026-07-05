@@ -19,11 +19,12 @@ def create_default_registry(config: Config) -> ToolRegistry:
         if config.allowed_tools is None or tool_cls.name in config.allowed_tools:
             registry.register(tool_cls(config))
 
-    if config.subagents:
-        from pp.tools.subagent import SubagentTool
+    from pp.tools.subagent import SubagentTool, get_default_subagent_definitions
 
-        for name, subagent_config in config.subagents.items():
-            registry.register(SubagentTool(name, subagent_config, config))
+    for subagent_config in get_default_subagent_definitions():
+        tool_name = f"subagent_{subagent_config.name}"
+        if config.allowed_tools is None or tool_name in config.allowed_tools:
+            registry.register(SubagentTool(subagent_config.name, subagent_config, config))
 
     return registry
 
