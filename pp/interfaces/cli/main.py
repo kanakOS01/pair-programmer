@@ -8,6 +8,7 @@ import typer
 
 from pp.agents import CodingAgent
 from pp.config import Config, load_config
+from pp.context import CompactionLayer
 from pp.domain import AgentEventType
 from pp.interfaces.cli.tui import TUI, get_console
 
@@ -139,6 +140,8 @@ class CLI:
             self._handle_model_command(args)
         elif cmd == "/mcp":
             self._handle_mcp_command()
+        elif cmd == "/compact":
+            await self._handle_compact_command(args)
         else:
             self.tui.show_command_error(f"Unknown command: {cmd}. Type /help for assistance.")
         return False
@@ -168,6 +171,35 @@ class CLI:
             )
 
         self.tui.show_mcp_servers(servers_data)
+
+    async def _handle_compact_command(self, args: str):
+        if not self.coding_agent or not self.coding_agent.session:
+            self.tui.show_config_error("Agent/Session not initialized.")
+            return
+
+        keep_last_n = 4
+        args = args.strip()
+        if args:
+            try:
+                keep_last_n = int(args)
+            except ValueError:
+                self.tui.show_command_error(f"Invalid keep_last_n: {args}. Must be an integer.")
+                return
+
+        self.tui.show_compact_start(keep_last_n)
+        try:
+            compaction_layer = CompactionLayer(
+                self.coding_agent.session.context_manager,
+                self.coding_agent.session.llm,
+            )
+            # Run compaction and await it
+            summary, usage = await compaction_layer.compact(keep_last_n)
+            if not summary:
+                self.tui.show_compact_no_op()
+            else:
+                self.tui.show_compact_success(summary, usage)
+        except Exception as e:
+            self.tui.show_command_error(f"Compaction failed: {e}")
 
     def _handle_config_command(self, args: str):
         args = args.strip()

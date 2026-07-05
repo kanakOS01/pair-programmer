@@ -114,6 +114,7 @@ class TUI:
         table.add_row("/approval [policy]", "View or change the tool execution approval policy.")
         table.add_row("/model [name]", "View or change the active LLM model.")
         table.add_row("/mcp", "Show status of MCP servers and their exposed tools.")
+        table.add_row("/compact [keep_last_n]", "Compact chat history, summarizing past messages.")
         table.add_row("/exit", "Exit the application.")
 
         panel = Panel(
@@ -169,6 +170,22 @@ class TUI:
 
     def show_config_error(self, message: str) -> None:
         self.console.print(f"[error]{message}[/error]")
+
+    def show_compact_start(self, keep_last_n: int) -> None:
+        self.console.print(f"[info]Compacting chat history (keeping last {keep_last_n} messages)...[/info]")
+
+    def show_compact_success(self, summary: str, usage: Any) -> None:
+        self.console.print("[success]Compaction complete![/success]")
+        if summary:
+            self.console.print(f"Summary: [dim]{summary}[/dim]")
+        self.console.print(
+            f"Token Usage - Prompt: [info]{usage.prompt_tokens}[/info], "
+            f"Completion: [info]{usage.completion_tokens}[/info], "
+            f"Total: [info]{usage.total_tokens}[/info]"
+        )
+
+    def show_compact_no_op(self) -> None:
+        self.console.print("[warning]Not enough messages to compact.[/warning]")
 
     def show_model(self, model_name: str) -> None:
         self.console.print(f"Current model: [info]{model_name}[/info]")
