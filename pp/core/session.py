@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pp.config import Config
 from pp.context.manager import ContextManager
 from pp.llm import OpenRouterLLM
+from pp.tools.mcp.manager import MCPManager
 from pp.tools.registry import create_default_registry
 from pp.utils.paths import get_data_dir
 
@@ -16,6 +17,7 @@ class Session:
         self.config = config
         self.llm = OpenRouterLLM(config)
         self.tool_registry = create_default_registry(config)
+        self.mcp_manager = MCPManager(config)
         self.context_manager = ContextManager(
             config=config,
             user_memory=self._load_memory(),
@@ -25,6 +27,13 @@ class Session:
         self.created_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
         self._turn_count = 0
+
+    async def initialize(self) -> None:
+        await self.mcp_manager.initialize()
+        mcp_tools = await self.mcp_manager.get_tools()
+        for tool in mcp_tools:
+            self.tool_registry.register(tool)
+        self.context_manager.update_system_prompt(self.tool_registry.list_tools())
 
     def increment_turn(self) -> int:
         self._turn_count += 1

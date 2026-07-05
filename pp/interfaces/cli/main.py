@@ -42,7 +42,7 @@ class CLI:
                 lines=[
                     f"Model: {self.config.model_name}",
                     f"cwd: {self.config.cwd}",
-                    "commands: /help /config /approval /model /exit",
+                    "commands: /help /config /approval /model /mcp /exit",
                 ],
             )
 
@@ -60,13 +60,11 @@ class CLI:
                         await self._process_message(inp)
 
                 except KeyboardInterrupt:
-                    console.print("\n[dim]Exiting...[/dim]\n")
-                    break
-
+                    console.print("\n[dim]Use /exit to exit standard mode.[/dim]")
                 except EOFError:
                     break
 
-        console.print("\n[dim]Goodbye![/dim]\n")
+        return None
 
     async def _process_message(self, message: str) -> str | None:
         if not self.coding_agent:
@@ -139,9 +137,37 @@ class CLI:
             self._handle_approval_command(args)
         elif cmd == "/model":
             self._handle_model_command(args)
+        elif cmd == "/mcp":
+            self._handle_mcp_command()
         else:
             self.tui.show_command_error(f"Unknown command: {cmd}. Type /help for assistance.")
         return False
+
+    def _handle_mcp_command(self):
+        if not self.coding_agent or not self.coding_agent.session:
+            self.tui.show_config_error("Agent/Session not initialized.")
+            return
+
+        mcp_manager = self.coding_agent.session.mcp_manager
+        servers_data = []
+
+        for name, client in mcp_manager.clients.items():
+            tools = []
+            if client._connected:
+                for tool in self.coding_agent.session.tool_registry.list_tools():
+                    if hasattr(tool, "client_name") and tool.client_name == name:
+                        tools.append(tool.name)
+
+            servers_data.append(
+                {
+                    "name": name,
+                    "connected": client._connected,
+                    "command": f"{client.command} {' '.join(client.args)}",
+                    "tools": tools,
+                }
+            )
+
+        self.tui.show_mcp_servers(servers_data)
 
     def _handle_config_command(self, args: str):
         args = args.strip()

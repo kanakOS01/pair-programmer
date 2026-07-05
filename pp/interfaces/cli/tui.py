@@ -113,6 +113,7 @@ class TUI:
         table.add_row("/config [key] [value]", "View all configurations, or get/set a config option.")
         table.add_row("/approval [policy]", "View or change the tool execution approval policy.")
         table.add_row("/model [name]", "View or change the active LLM model.")
+        table.add_row("/mcp", "Show status of MCP servers and their exposed tools.")
         table.add_row("/exit", "Exit the application.")
 
         panel = Panel(
@@ -123,6 +124,32 @@ class TUI:
             expand=False,
         )
         self.console.print(panel)
+
+    def show_mcp_servers(self, servers_data: list[dict[str, Any]]) -> None:
+        if not servers_data:
+            self.console.print("[warning]No MCP servers configured.[/warning]")
+            return
+
+        table = Table(title="MCP Servers Status", box=box.ROUNDED, border_style="border")
+        table.add_column("Server Name", style="highlight")
+        table.add_column("Status", style="info")
+        table.add_column("Command", style="muted")
+        table.add_column("Tools", style="default")
+
+        for server in servers_data:
+            name = server["name"]
+            status = "[success]Connected[/success]" if server["connected"] else "[error]Disconnected[/error]"
+            command = server["command"]
+            tools_list = server["tools"]
+
+            if tools_list:
+                tools_str = ", ".join(tools_list)
+            else:
+                tools_str = "[dim]None[/dim]"
+
+            table.add_row(name, status, command, tools_str)
+
+        self.console.print(table)
 
     def show_config(self, config_data: list[tuple[str, Any, str]]) -> None:
         table = Table(title="Configuration", box=box.ROUNDED, border_style="border")

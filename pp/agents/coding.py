@@ -15,9 +15,12 @@ class CodingAgent(BaseAgent):
         self.session: Session = Session(config)
 
     async def __aenter__(self) -> CodingAgent:
+        await self.session.initialize()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        if hasattr(self.session, "mcp_manager") and self.session.mcp_manager:
+            await self.session.mcp_manager.close()
         if self.session.llm:
             await self.session.llm.close()
 

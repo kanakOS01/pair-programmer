@@ -29,6 +29,12 @@ class ApprovalPolicy(str, Enum):
     YOLO = "yolo"
 
 
+class MCPServerConfig(BaseModel):
+    command: str
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+
+
 class Config(BaseModel):
     model: ModelConfig = Field(default_factory=ModelConfig)
     cwd: Path = Field(default_factory=Path.cwd)
@@ -36,6 +42,8 @@ class Config(BaseModel):
 
     max_turns: int = 100
     retries: int = 3
+
+    mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
     allowed_tools: list[str] | None = Field(
         None,
