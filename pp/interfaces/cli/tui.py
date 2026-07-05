@@ -101,6 +101,64 @@ class TUI:
             )
         )
 
+    def show_exit(self) -> None:
+        self.console.print("\n[dim]Exiting...[/dim]\n")
+
+    def show_help(self) -> None:
+        table = Table(box=None, show_header=False, padding=(0, 2))
+        table.add_column("Command", style="highlight", no_wrap=True)
+        table.add_column("Description", style="default")
+
+        table.add_row("/help", "Show this help menu.")
+        table.add_row("/config [key] [value]", "View all configurations, or get/set a config option.")
+        table.add_row("/approval [policy]", "View or change the tool execution approval policy.")
+        table.add_row("/model [name]", "View or change the active LLM model.")
+        table.add_row("/exit", "Exit the application.")
+
+        panel = Panel(
+            table,
+            title="Available Commands",
+            title_align="left",
+            border_style="border",
+            expand=False,
+        )
+        self.console.print(panel)
+
+    def show_config(self, config_data: list[tuple[str, Any, str]]) -> None:
+        table = Table(title="Configuration", box=box.ROUNDED, border_style="border")
+        table.add_column("Key", style="highlight")
+        table.add_column("Value", style="info")
+        table.add_column("Type", style="muted")
+
+        for key, val, typ in config_data:
+            table.add_row(key, str(val), typ)
+        self.console.print(table)
+
+    def show_config_value(self, key: str, value: Any) -> None:
+        self.console.print(f"[highlight]{key}[/highlight] = [info]{value}[/info]")
+
+    def show_config_success(self, key: str, value: Any) -> None:
+        self.console.print(f"[success]Updated [highlight]{key}[/highlight] to [info]{value}[/info][/success]")
+
+    def show_config_error(self, message: str) -> None:
+        self.console.print(f"[error]{message}[/error]")
+
+    def show_model(self, model_name: str) -> None:
+        self.console.print(f"Current model: [info]{model_name}[/info]")
+
+    def show_model_success(self, model_name: str) -> None:
+        self.console.print(f"[success]Model updated to: [info]{model_name}[/info][/success]")
+
+    def show_approval(self, policy: str, available_policies: list[str]) -> None:
+        self.console.print(f"Current approval policy: [info]{policy}[/info]")
+        self.console.print(f"Available policies: {', '.join(available_policies)}")
+
+    def show_approval_success(self, policy: str) -> None:
+        self.console.print(f"[success]Approval policy updated to: [info]{policy}[/info][/success]")
+
+    def show_command_error(self, message: str) -> None:
+        self.console.print(f"[error]{message}[/error]")
+
     def tool_call_start(self, *, call_id: str, name: str, tool_type: str | None, args: dict[str, Any]) -> None:
         self._tool_args_by_call_id[call_id] = args
         border_style = f"tool.{tool_type}" if tool_type else "tool"

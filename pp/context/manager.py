@@ -9,9 +9,17 @@ from pp.utils.text import count_tokens
 
 class ContextManager:
     def __init__(self, config: Config, user_memory: str | None, tools: list[Tool] | None) -> None:
+        self.config = config
+        self.user_memory = user_memory
+        self.tools = tools
         self._system_prompt = get_system_prompt(config, user_memory, tools)
         self._model_name = "stepfun/step-3.5-flash:free"
         self._messages: list[Message] = []
+
+    def update_system_prompt(self, tools: list[Tool] | None = None) -> None:
+        if tools is not None:
+            self.tools = tools
+        self._system_prompt = get_system_prompt(self.config, self.user_memory, self.tools)
 
     def add_user_message(self, content: str) -> None:
         message = Message(role="user", content=content, token_count=count_tokens(content, self._model_name))

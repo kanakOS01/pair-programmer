@@ -2,7 +2,7 @@ import asyncio
 import sys
 from functools import wraps
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import typer
 
@@ -52,7 +52,12 @@ class CLI:
                     if not inp:
                         continue
 
-                    await self._process_message(inp)
+                    if inp.startswith("/"):
+                        should_exit = await self._handle_command(inp)
+                        if should_exit:
+                            break
+                    else:
+                        await self._process_message(inp)
 
                 except KeyboardInterrupt:
                     console.print("\n[dim]Exiting...[/dim]\n")
@@ -116,6 +121,181 @@ class CLI:
                     exit_code=event.data.get("exit_code"),
                     meta=event.data.get("metadata", None),
                 )
+
+    async def _handle_command(self, inp: str) -> bool:
+        """Handles a slash command. Returns True if the CLI loop should exit."""
+        parts = inp.strip().split(maxsplit=1)
+        cmd = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        if cmd == "/exit":
+            self.tui.show_exit()
+            return True
+        elif cmd == "/help":
+            self.tui.show_help()
+        elif cmd == "/config":
+            self._handle_config_command(args)
+        elif cmd == "/approval":
+            self._handle_approval_command(args)
+        elif cmd == "/model":
+            self._handle_model_command(args)
+        else:
+            self.tui.show_command_error(f"Unknown command: {cmd}. Type /help for assistance.")
+        return False
+
+    def _handle_config_command(self, args: str):
+        args = args.strip()
+        if not args:
+            config_data = [
+                ("model.name", self.config.model.name, "str"),
+                ("model.temp", self.config.model.temp, "float"),
+                ("model.context_window", self.config.model.context_window, "int"),
+                ("cwd", str(self.config.cwd), "Path"),
+                ("max_turns", self.config.max_turns, "int"),
+                ("retries", self.config.retries, "int"),
+                ("debug", self.config.debug, "bool"),
+                ("allowed_tools", self.config.allowed_tools, "list[str] | None"),
+                (
+                    "approval",
+                    self.config.approval.value if hasattr(self.config.approval, "value") else str(self.config.approval),
+                    "ApprovalPolicy",
+                ),
+            ]
+            self.tui.show_config(config_data)
+            return
+
+        parts = args.split(maxsplit=1)
+        key = parts[0]
+        if len(parts) == 1:
+            val = self._get_config_attr(key)
+            if val is None:
+                self.tui.show_config_error(f"Invalid or unknown configuration key: {key}")
+            else:
+                self.tui.show_config_value(key, val)
+        else:
+            value_str = parts[1]
+            success = self._set_config_attr(key, value_str)
+            if success:
+                new_val = self._get_config_attr(key)
+                self.tui.show_config_success(key, new_val)
+                if self.coding_agent:
+                    self.coding_agent.session.context_manager.update_system_prompt()
+            else:
+                self.tui.show_config_error(f"Failed to update configuration key: {key}")
+
+    def _handle_model_command(self, args: str):
+        args = args.strip()
+        if not args:
+            self.tui.show_model(self.config.model_name)
+            return
+
+        self.config.model_name = args
+        self.tui.show_model_success(args)
+        if self.coding_agent:
+            self.coding_agent.session.context_manager.update_system_prompt()
+
+    def _handle_approval_command(self, args: str):
+        from pp.config.config import ApprovalPolicy
+
+        args = args.strip()
+        if not args:
+            self.tui.show_approval(
+                self.config.approval.value if hasattr(self.config.approval, "value") else str(self.config.approval),
+                [p.value for p in ApprovalPolicy],
+            )
+            return
+
+        matched = None
+        for p in ApprovalPolicy:
+            if p.value.lower() == args.lower():
+                matched = p
+                break
+
+        if matched:
+            self.config.approval = matched
+            self.tui.show_approval_success(matched.value)
+            if self.coding_agent:
+                self.coding_agent.session.context_manager.update_system_prompt()
+        else:
+            self.tui.show_command_error(
+                f"Invalid approval policy: {args}. Must be one of: {', '.join(p.value for p in ApprovalPolicy)}"
+            )
+
+    def _get_config_attr(self, key: str) -> Any:
+        parts = key.split(".")
+        obj = self.config
+        for p in parts:
+            if hasattr(obj, p):
+                obj = getattr(obj, p)
+            else:
+                return None
+        return obj
+
+    def _set_config_attr(self, key: str, value_str: str) -> bool:
+        parts = key.split(".")
+        obj = self.config
+        for p in parts[:-1]:
+            if hasattr(obj, p):
+                obj = getattr(obj, p)
+            else:
+                return False
+
+        attr = parts[-1]
+        if not hasattr(obj, attr):
+            return False
+
+        current_val = getattr(obj, attr)
+        expected_type = type(current_val) if current_val is not None else str
+
+        try:
+            if expected_type is bool:
+                if value_str.lower() in ("true", "1", "yes", "on"):
+                    val = True
+                elif value_str.lower() in ("false", "0", "no", "off"):
+                    val = False
+                else:
+                    return False
+            elif expected_type is int:
+                val = int(value_str)
+            elif expected_type is float:
+                val = float(value_str)
+            elif expected_type is Path:
+                val = Path(value_str)
+            elif key == "allowed_tools":
+                if value_str.lower() in ("none", "null", ""):
+                    val = None
+                else:
+                    val = [t.strip() for t in value_str.split(",")]
+            elif key == "approval":
+                from pp.config.config import ApprovalPolicy
+
+                matched = None
+                for p in ApprovalPolicy:
+                    if p.value.lower() == value_str.lower():
+                        matched = p
+                        break
+                if matched:
+                    val = matched
+                else:
+                    return False
+            else:
+                val = value_str
+
+            setattr(obj, attr, val)
+
+            if key == "allowed_tools":
+                if self.coding_agent:
+                    from pp.tools.registry import create_default_registry
+
+                    self.coding_agent.session.tool_registry = create_default_registry(self.config)
+                    self.coding_agent.session.context_manager.update_system_prompt(
+                        self.coding_agent.session.tool_registry.list_tools()
+                    )
+
+            return True
+        except Exception as e:
+            self.tui.show_config_error(f"Type conversion error: {e}")
+            return False
 
 
 def coro(f):

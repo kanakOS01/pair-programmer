@@ -46,6 +46,7 @@ class Config(BaseModel):
     user_instructions: str | None = None
 
     debug: bool = False
+    approval: ApprovalPolicy = Field(default=ApprovalPolicy.AUTO)
 
     @property
     def api_key(self) -> str:
