@@ -15,8 +15,15 @@ logger = logging.getLogger(__name__)
 def create_default_registry(config: Config) -> ToolRegistry:
     registry = ToolRegistry()
 
-    for tool in get_builtin_tools():
-        registry.register(tool(config))
+    for tool_cls in get_builtin_tools():
+        if config.allowed_tools is None or tool_cls.name in config.allowed_tools:
+            registry.register(tool_cls(config))
+
+    if config.subagents:
+        from pp.tools.subagent import SubagentTool
+
+        for name, subagent_config in config.subagents.items():
+            registry.register(SubagentTool(name, subagent_config, config))
 
     return registry
 

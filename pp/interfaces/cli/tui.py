@@ -358,6 +358,19 @@ class TUI:
                 output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
                 blocks.append(Syntax(output_display, lexer="text", theme=self._CODE_THEME, word_wrap=True))
 
+        elif name.startswith("subagent_") and success:
+            task = args.get("task")
+            if isinstance(task, str) and task.strip():
+                blocks.append(Text(f"Task: {task.strip()}", style="muted"))
+                blocks.append(Text())
+
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Markdown(output_display, code_theme=self._CODE_THEME))
+
+        elif success:
+            output_display = truncate_text(output, self.config.model_name, max_tokens=self._max_block_tokens)
+            blocks.append(Text(output_display))
+
         if error and not success:
             blocks.append(Text(error, style="error"))
 
@@ -424,6 +437,9 @@ class TUI:
         }
 
         preferred = _PREFERRED_ORDER.get(tool_name, [])
+        if not preferred and tool_name.startswith("subagent_"):
+            preferred = ["task"]
+
         ordered: list[tuple[str, Any]] = []
         seen = set()
 

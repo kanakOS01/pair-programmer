@@ -75,12 +75,16 @@ class OpenRouterLLM(BaseLLM):
                 await asyncio.sleep(2**attempt)
 
     async def _generate_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> AsyncGenerator[LLMEvent, None]:
-        response = await client.chat.completions.create(
-            model=kwargs["model"],
-            messages=kwargs["messages"],
-            tools=kwargs["tools"],
-            stream=True,
-        )
+        params = {
+            "model": kwargs["model"],
+            "messages": kwargs["messages"],
+            "stream": True,
+        }
+        if "tools" in kwargs:
+            params["tools"] = kwargs["tools"]
+            params["tool_choice"] = kwargs.get("tool_choice", "auto")
+
+        response = await client.chat.completions.create(**params)
 
         finish_reason: str | None = None
         usage: TokenUsage | None = None
@@ -159,12 +163,16 @@ class OpenRouterLLM(BaseLLM):
         yield LLMEvent.stream_done(finish_reason=finish_reason, usage=usage)
 
     async def _generate_non_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> LLMEvent:
-        response = await client.chat.completions.create(
-            model=kwargs["model"],
-            messages=kwargs["messages"],
-            tools=kwargs["tools"],
-            stream=False,
-        )
+        params = {
+            "model": kwargs["model"],
+            "messages": kwargs["messages"],
+            "stream": False,
+        }
+        if "tools" in kwargs:
+            params["tools"] = kwargs["tools"]
+            params["tool_choice"] = kwargs.get("tool_choice", "auto")
+
+        response = await client.chat.completions.create(**params)
 
         choice = response.choices[0]
         message = choice.message

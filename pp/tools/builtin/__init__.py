@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 
-def get_builtin_tools() -> list[type(Tool)]:
+def get_builtin_tools() -> list[type[Tool]]:
     return [
         ReadFileTool,
         ListDirTool,

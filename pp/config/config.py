@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ModelConfig(BaseModel):
@@ -42,10 +42,55 @@ class Config(BaseModel):
         description="If set, only these tools will be available to the agent",
     )
 
+    subagents: dict[str, Any] = Field(default_factory=dict)
+
     developer_instructions: str | None = None
     user_instructions: str | None = None
 
     debug: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def merge_default_subagents(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            from pp.tools.subagent import SubagentDefinition, get_default_subagent_definitions
+
+            subagents = data.get("subagents", {})
+            merged = {}
+            for default_cfg in get_default_subagent_definitions():
+                name = default_cfg.name
+                if name in subagents:
+                    user_subagent = subagents[name]
+                    if isinstance(user_subagent, dict):
+                        # Merge dictionaries, overriding default fields
+                        merged_subagent = default_cfg.model_dump()
+                        for k, v in user_subagent.items():
+                            if v is not None:
+                                merged_subagent[k] = v
+                        merged[name] = SubagentDefinition.model_validate(merged_subagent)
+                    else:
+                        merged[name] = (
+                            user_subagent
+                            if isinstance(user_subagent, SubagentDefinition)
+                            else SubagentDefinition.model_validate(user_subagent)
+                        )
+                else:
+                    merged[name] = default_cfg
+
+            # Add any other user defined subagents
+            for name, user_subagent in subagents.items():
+                if name not in merged:
+                    if isinstance(user_subagent, dict) and "name" not in user_subagent:
+                        user_subagent = user_subagent.copy()
+                        user_subagent["name"] = name
+                    merged[name] = (
+                        user_subagent
+                        if isinstance(user_subagent, SubagentDefinition)
+                        else SubagentDefinition.model_validate(user_subagent)
+                    )
+
+            data["subagents"] = merged
+        return data
 
     @property
     def api_key(self) -> str:
