@@ -1,7 +1,0 @@
-[model]
-name = "openai/gpt-oss-120b:free"
-
-# Example 1: SQLite Server using uvx
-[mcp_servers.sqlite]
-command = "uvx"
-args = ["mcp-server-sqlite", "--db-path", "/Users/macbook/Desktop/my_database.db"]

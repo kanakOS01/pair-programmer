@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pp.config import Config
 from pp.context.manager import ContextManager
 from pp.llm import OpenRouterLLM
+from pp.safety.approval import ApprovalManager
 from pp.tools.mcp.manager import MCPManager
 from pp.tools.registry import create_default_registry
 from pp.utils.paths import get_data_dir
@@ -18,6 +19,7 @@ class Session:
         self.llm = OpenRouterLLM(config)
         self.tool_registry = create_default_registry(config)
         self.mcp_manager = MCPManager(config)
+        self.approval_manager = ApprovalManager(config)
         self.context_manager = ContextManager(
             config=config,
             user_memory=self._load_memory(),

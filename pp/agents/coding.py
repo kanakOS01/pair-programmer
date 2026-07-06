@@ -97,6 +97,7 @@ class CodingAgent(BaseAgent):
                     tool_call.name,
                     tool_call.args,
                     self.session.config.cwd,
+                    approval_manager=self.session.approval_manager,
                 )
 
                 yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)

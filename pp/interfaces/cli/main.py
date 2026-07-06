@@ -9,7 +9,7 @@ import typer
 from pp.agents import CodingAgent
 from pp.config import Config, load_config
 from pp.context import CompactionLayer
-from pp.domain import AgentEventType
+from pp.domain import AgentEventType, ToolConfirmation
 from pp.interfaces.cli.tui import TUI, get_console
 
 app = typer.Typer()
@@ -23,6 +23,22 @@ class CLI:
         self.config = config
         self.tui: TUI = TUI(config, console)
 
+    def _confirm_tool_call(self, confirmation: ToolConfirmation) -> bool:
+        self.tui.console.print()
+        self.tui.console.print("[warning]Requires Confirmation:[/warning]")
+        self.tui.console.print(f"Tool: [info]{confirmation.tool_name}[/info]")
+        self.tui.console.print(f"Action: {confirmation.description}")
+        if confirmation.params:
+            self.tui.console.print("Parameters:")
+            for k, v in confirmation.params.items():
+                self.tui.console.print(f"  - {k}: {v}")
+
+        try:
+            inp = self.tui.console.input("\n[bold]Approve? (y/N): [/bold]").strip().lower()
+            return inp in ("y", "yes")
+        except (KeyboardInterrupt, EOFError):
+            return False
+
     async def run(self, run_type: Literal["one_time", "interactive"] = "interactive", prompt: str = ""):
         if run_type == "one_time":
             return await self._run_once(prompt)
@@ -32,11 +48,13 @@ class CLI:
     async def _run_once(self, prompt: str):
         async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
+            agent.session.approval_manager.confirmation_callback = self._confirm_tool_call
             return await self._process_message(prompt)
 
     async def _run_interactive(self):
         async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
+            agent.session.approval_manager.confirmation_callback = self._confirm_tool_call
 
             self.tui.welcome(
                 title="Pair Programmer",

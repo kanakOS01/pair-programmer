@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from pp.config import Config
-from pp.domain import ToolInvocation, ToolResult
+from pp.domain import ToolConfirmation, ToolInvocation, ToolResult
+from pp.safety import ApprovalDecision, ApprovalManager
 from pp.tools.base import Tool
 from pp.tools.builtin import get_builtin_tools
 
@@ -62,6 +63,7 @@ class ToolRegistry:
         name: str,
         params: dict[str, Any],
         cwd: str | Path,
+        approval_manager: ApprovalManager | None = None,
     ) -> ToolResult:
         tool = self.get(name)
         if tool is None:
@@ -78,6 +80,30 @@ class ToolRegistry:
             )
 
         invocation = ToolInvocation(cwd=Path(cwd), params=params)
+
+        if approval_manager:
+            context = approval_manager.create_context(tool, params)
+            decision = approval_manager.checker.check(context)
+            if decision == ApprovalDecision.REJECTED:
+                return ToolResult.error_result(
+                    "Tool execution rejected by approval policy",
+                    metadata={"tool_name": name, "approval_decision": decision.value},
+                )
+            elif decision == ApprovalDecision.NEEDS_CONFIRMATION:
+                confirmation = await tool.get_confirmation(invocation)
+                if not confirmation:
+                    confirmation = ToolConfirmation(
+                        tool_name=tool.name,
+                        params=params,
+                        description=f"Execute {tool.name}",
+                    )
+                approved = await approval_manager.request_confirmation(confirmation)
+                if not approved:
+                    return ToolResult.error_result(
+                        "Tool execution rejected by user",
+                        metadata={"tool_name": name, "approval_decision": "rejected_by_user"},
+                    )
+
         try:
             return await tool.execute(invocation)
         except Exception as e:

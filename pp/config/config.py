@@ -3,9 +3,9 @@ from __future__ import annotations
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 
 class ModelConfig(BaseModel):
@@ -27,6 +27,25 @@ class ApprovalPolicy(str, Enum):
     AUTO_EDIT = "auto-edit"
     NEVER = "never"
     YOLO = "yolo"
+
+
+class ApprovalConfig(BaseModel):
+    policy: ApprovalPolicy = ApprovalPolicy.AUTO
+    safe_tools: list[str] = Field(default_factory=list)
+    requires_approval_tools: list[str] = Field(default_factory=list)
+    requires_approval_types: list[str] = Field(default_factory=list)
+    safe_paths: list[str] = Field(default_factory=list)
+    dangerous_commands: list[str] = Field(default_factory=list)
+
+
+def _coerce_approval(v: Any) -> ApprovalConfig:
+    if isinstance(v, ApprovalConfig):
+        return v
+    if isinstance(v, dict):
+        return ApprovalConfig(**v)
+    if isinstance(v, (str, ApprovalPolicy)):
+        return ApprovalConfig(policy=ApprovalPolicy(v))
+    raise ValueError(f"Cannot coerce {v} to ApprovalConfig")
 
 
 class MCPServerConfig(BaseModel):
@@ -54,7 +73,7 @@ class Config(BaseModel):
     user_instructions: str | None = None
 
     debug: bool = False
-    approval: ApprovalPolicy = Field(default=ApprovalPolicy.AUTO)
+    approval: Annotated[ApprovalConfig, BeforeValidator(_coerce_approval)] = Field(default_factory=ApprovalConfig)
 
     @property
     def api_key(self) -> str:
