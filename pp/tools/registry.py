@@ -39,6 +39,8 @@ class ToolRegistry:
             logger.warning(f"Overwriting existing tool {tool.name}")
 
         self._tools[tool.name] = tool
+        if hasattr(self, "session"):
+            tool.session = self.session
         logger.debug(f"Tool {tool.name} registered")
 
     def unregister(self, tool: Tool) -> bool:

@@ -39,29 +39,48 @@ class CLI:
         except (KeyboardInterrupt, EOFError):
             return False
 
-    async def run(self, run_type: Literal["one_time", "interactive"] = "interactive", prompt: str = ""):
+    async def run(
+        self,
+        run_type: Literal["one_time", "interactive"] = "interactive",
+        prompt: str = "",
+        session_id: str | None = None,
+    ):
         if run_type == "one_time":
-            return await self._run_once(prompt)
+            return await self._run_once(prompt, session_id=session_id)
         elif run_type == "interactive":
-            return await self._run_interactive()
+            return await self._run_interactive(session_id=session_id)
 
-    async def _run_once(self, prompt: str):
+    async def _run_once(self, prompt: str, session_id: str | None = None):
         async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
             agent.session.approval_manager.confirmation_callback = self._confirm_tool_call
+            if session_id:
+                try:
+                    agent.session.load(session_id)
+                except FileNotFoundError:
+                    self.tui.error(f"Session '{session_id}' not found.")
+                    return None
             return await self._process_message(prompt)
 
-    async def _run_interactive(self):
+    async def _run_interactive(self, session_id: str | None = None):
         async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
             agent.session.approval_manager.confirmation_callback = self._confirm_tool_call
+            if session_id:
+                try:
+                    agent.session.load(session_id)
+                    console.print(f"[success]Resumed session {session_id}[/success]")
+                except FileNotFoundError:
+                    self.tui.error(f"Session '{session_id}' not found.")
+                    return None
 
             self.tui.welcome(
                 title="Pair Programmer",
                 lines=[
                     f"Model: {self.config.model_name}",
                     f"cwd: {self.config.cwd}",
-                    "commands: /help /config /approval /model /mcp /exit",
+                    f"Session ID: {agent.session.session_id}",
+                    "commands: /help /config /approval /model /mcp /usage /resume /compact /exit",
                 ],
             )
 
@@ -158,11 +177,156 @@ class CLI:
             self._handle_model_command(args)
         elif cmd == "/mcp":
             self._handle_mcp_command()
+        elif cmd == "/usage":
+            if not self.coding_agent or not self.coding_agent.session:
+                self.tui.show_config_error("Agent/Session not initialized.")
+            else:
+                self.tui.show_usage(self.coding_agent.session.token_usage)
+        elif cmd == "/resume":
+            await self._handle_resume_command(args)
         elif cmd == "/compact":
             await self._handle_compact_command(args)
         else:
             self.tui.show_command_error(f"Unknown command: {cmd}. Type /help for assistance.")
         return False
+
+    async def _handle_resume_command(self, args: str):
+        if not self.coding_agent or not self.coding_agent.session:
+            self.tui.show_config_error("Agent/Session not initialized.")
+            return
+
+        session_id = args.strip()
+        if not session_id:
+            await self._handle_resume_interactive()
+        else:
+            try:
+                self.coding_agent.session.load(session_id)
+                console.print(f"[success]Resumed session {session_id}[/success]")
+            except FileNotFoundError:
+                self.tui.show_command_error(f"Session '{session_id}' not found.")
+
+    async def _handle_resume_interactive(self):
+        from pp.core.session import get_sessions
+
+        all_sessions = get_sessions()
+        if not all_sessions:
+            self.tui.show_command_error("No saved sessions found.")
+            return
+
+        current_page = 0
+        page_size = 5
+
+        while True:
+            total_pages = (len(all_sessions) + page_size - 1) // page_size
+            start_idx = current_page * page_size
+            end_idx = start_idx + page_size
+            page_sessions = all_sessions[start_idx:end_idx]
+
+            self.tui.show_sessions(page_sessions, current_page, total_pages)
+
+            prompt_lines = []
+            if current_page + 1 < total_pages:
+                prompt_lines.append("[bold]n[/bold] for Next page")
+            if current_page > 0:
+                prompt_lines.append("[bold]p[/bold] for Previous page")
+            prompt_lines.append("number [bold]1-5[/bold] to resume a session")
+            prompt_lines.append("Session ID to resume")
+            prompt_lines.append("press [bold]Enter[/bold] to cancel")
+
+            console.print(f"Options: {', '.join(prompt_lines)}")
+
+            try:
+                inp = console.input("\nChoose option: ").strip()
+                if not inp:
+                    break
+
+                if inp.lower() in ("n", "next") and current_page + 1 < total_pages:
+                    current_page += 1
+                    continue
+                elif inp.lower() in ("p", "prev") and current_page > 0:
+                    current_page -= 1
+                    continue
+
+                if inp.isdigit():
+                    idx = int(inp) - 1
+                    if 0 <= idx < len(page_sessions):
+                        selected_session = page_sessions[idx]
+                        session_id = selected_session["session_id"]
+                        self.coding_agent.session.load(session_id)
+                        console.print(f"[success]Resumed session {session_id}[/success]")
+                        break
+                    else:
+                        console.print("[error]Invalid index selected.[/error]")
+                        continue
+
+                try:
+                    self.coding_agent.session.load(inp)
+                    console.print(f"[success]Resumed session {inp}[/success]")
+                    break
+                except FileNotFoundError:
+                    console.print(f"[error]Session '{inp}' not found. Please try again.[/error]")
+
+            except (KeyboardInterrupt, EOFError):
+                break
+
+    async def select_session_startup(self) -> str | None:
+        from pp.core.session import get_sessions
+
+        all_sessions = get_sessions()
+        if not all_sessions:
+            console.print("[error]No saved sessions found.[/error]")
+            return None
+
+        current_page = 0
+        page_size = 5
+
+        while True:
+            total_pages = (len(all_sessions) + page_size - 1) // page_size
+            start_idx = current_page * page_size
+            end_idx = start_idx + page_size
+            page_sessions = all_sessions[start_idx:end_idx]
+
+            self.tui.show_sessions(page_sessions, current_page, total_pages)
+
+            prompt_lines = []
+            if current_page + 1 < total_pages:
+                prompt_lines.append("[bold]n[/bold] for Next page")
+            if current_page > 0:
+                prompt_lines.append("[bold]p[/bold] for Previous page")
+            prompt_lines.append("number [bold]1-5[/bold] to resume a session")
+            prompt_lines.append("Session ID to resume")
+            prompt_lines.append("press [bold]Enter[/bold] to cancel")
+
+            console.print(f"Options: {', '.join(prompt_lines)}")
+
+            try:
+                inp = console.input("\nChoose option: ").strip()
+                if not inp:
+                    return None
+
+                if inp.lower() in ("n", "next") and current_page + 1 < total_pages:
+                    current_page += 1
+                    continue
+                elif inp.lower() in ("p", "prev") and current_page > 0:
+                    current_page -= 1
+                    continue
+
+                if inp.isdigit():
+                    idx = int(inp) - 1
+                    if 0 <= idx < len(page_sessions):
+                        return page_sessions[idx]["session_id"]
+                    else:
+                        console.print("[error]Invalid index selected.[/error]")
+                        continue
+
+                uuid_matches = [s["session_id"] for s in all_sessions if s["session_id"] == inp]
+                if uuid_matches:
+                    return uuid_matches[0]
+                else:
+                    console.print(f"[error]Session '{inp}' not found in saved sessions.[/error]")
+
+            except (KeyboardInterrupt, EOFError):
+                return None
 
     def _handle_mcp_command(self):
         if not self.coding_agent or not self.coding_agent.session:
@@ -215,6 +379,9 @@ class CLI:
             if not summary:
                 self.tui.show_compact_no_op()
             else:
+                if usage:
+                    self.coding_agent.session.accumulate_usage(usage)
+                self.coding_agent.session.save()
                 self.tui.show_compact_success(summary, usage)
         except Exception as e:
             self.tui.show_command_error(f"Compaction failed: {e}")
@@ -396,6 +563,12 @@ async def main(
         resolve_path=True,
         help="Set the current working directory",
     ),
+    resume: str = typer.Option(
+        None,
+        "--resume",
+        "-r",
+        help="Resume a previous session by session ID (UUID) or list them",
+    ),
 ):
     """
     Entrypoint of pp (pair-programmer) CLI
@@ -415,12 +588,20 @@ async def main(
 
     cli = CLI(config)
 
+    session_id = None
+    if resume is not None:
+        session_id = resume.strip()
+        if not session_id or session_id.lower() == "list":
+            session_id = await cli.select_session_startup()
+            if not session_id:
+                sys.exit(0)
+
     if prompt:
-        res = await cli.run(run_type="one_time", prompt=prompt)
+        res = await cli.run(run_type="one_time", prompt=prompt, session_id=session_id)
         if res is None:
             sys.exit(1)
     else:
-        await cli.run()
+        await cli.run(run_type="interactive", session_id=session_id)
 
 
 if __name__ == "__main__":

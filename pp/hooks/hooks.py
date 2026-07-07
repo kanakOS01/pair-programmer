@@ -96,7 +96,7 @@ class HookSystem:
                         f"STDERR: {stderr.decode(errors='replace')}"
                     )
                 else:
-                    logger.debug(f"Hook '{hook.name}' executed successfully.\n" f"STDOUT: {stdout.decode(errors='replace')}")
+                    logger.debug(f"Hook '{hook.name}' executed successfully.\nSTDOUT: {stdout.decode(errors='replace')}")
             except asyncio.TimeoutError:
                 # Kill process on timeout
                 try:

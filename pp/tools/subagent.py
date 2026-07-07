@@ -102,6 +102,7 @@ class SubagentTool(Tool):
         error_msg = None
         try:
             async with CodingAgent(config=subagent_config) as agent:
+                agent.session.is_subagent = True
                 async for event in agent.run(task):
                     if event.type == AgentEventType.TextComplete:
                         final_response = event.data.get("content")
@@ -110,6 +111,9 @@ class SubagentTool(Tool):
                             final_response = event.data.get("response")
                     elif event.type == AgentEventType.Error:
                         error_msg = event.data.get("error")
+
+                if hasattr(self, "session") and self.session:
+                    self.session.accumulate_usage(agent.session.token_usage)
 
             if error_msg:
                 return ToolResult.error_result(f"Subagent failed: {error_msg}")

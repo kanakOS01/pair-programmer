@@ -29,6 +29,7 @@ class CodingAgent(BaseAgent):
         try:
             await self.session.hook_system.run_hooks("before_agent", {"agent_prompt": prompt})
             self.session.context_manager.add_user_message(prompt)
+            self.session.save()
 
             final_response = None
             async for event in self._loop():
@@ -44,7 +45,7 @@ class CodingAgent(BaseAgent):
                     "agent_response": final_response or "",
                 },
             )
-            yield AgentEvent.agent_done(final_response)
+            yield AgentEvent.agent_done(final_response, self.session.token_usage)
         except Exception as e:
             await self.session.hook_system.run_hooks("on_error", {"agent_prompt": prompt, "error": str(e)})
             raise e
@@ -96,6 +97,9 @@ class CodingAgent(BaseAgent):
                 if tool_calls
                 else None,
             )
+            if usage:
+                self.session.accumulate_usage(usage)
+            self.session.save()
             if response_text:
                 yield AgentEvent.agent_text_complete(content=response_text)
 
@@ -144,3 +148,4 @@ class CodingAgent(BaseAgent):
 
             for tr in tool_call_results:
                 self.session.context_manager.add_tool_result_message(tr.call_id, tr.content)
+            self.session.save()

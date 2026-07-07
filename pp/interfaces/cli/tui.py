@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from rich.text import Text
 from rich.theme import Theme
 
 from pp.config import Config
+from pp.domain import TokenUsage
 from pp.interfaces.cli.themes import DEFAULT_THEME
 from pp.utils.text import truncate_text
 
@@ -114,6 +116,8 @@ class TUI:
         table.add_row("/approval [policy]", "View or change the tool execution approval policy.")
         table.add_row("/model [name]", "View or change the active LLM model.")
         table.add_row("/mcp", "Show status of MCP servers and their exposed tools.")
+        table.add_row("/usage", "View token usage of the current session (including subagents).")
+        table.add_row("/resume [session_id]", "Resume a previous session, or list saved sessions.")
         table.add_row("/compact [keep_last_n]", "Compact chat history, summarizing past messages.")
         table.add_row("/exit", "Exit the application.")
 
@@ -202,6 +206,71 @@ class TUI:
 
     def show_command_error(self, message: str) -> None:
         self.console.print(f"[error]{message}[/error]")
+
+    def show_usage(self, usage: TokenUsage) -> None:
+        table = Table(box=box.ROUNDED, border_style="border")
+        table.add_column("Metric", style="highlight")
+        table.add_column("Usage", style="info", justify="right")
+
+        table.add_row("Prompt Tokens", f"{usage.prompt_tokens:,}")
+        table.add_row("Completion Tokens", f"{usage.completion_tokens:,}")
+        table.add_row("Cached Tokens", f"{usage.cached_tokens:,}")
+        table.add_row("Total Tokens", f"{usage.total_tokens:,}", style="usage.total")
+
+        panel = Panel(
+            table,
+            title="Session Token Usage",
+            title_align="left",
+            border_style="border",
+            expand=False,
+        )
+        self.console.print(panel)
+
+    def show_sessions(self, sessions: list[dict[str, Any]], page: int, total_pages: int) -> None:
+        if not sessions:
+            self.console.print("[warning]No saved sessions found.[/warning]")
+            return
+
+        table = Table(title=f"Saved Sessions (Page {page + 1} of {total_pages})", box=box.ROUNDED, border_style="border")
+        table.add_column("#", style="highlight", justify="right")
+        table.add_column("Session ID", style="info", no_wrap=True)
+        table.add_column("Last Active", style="muted")
+        table.add_column("Turns", style="default", justify="right")
+        table.add_column("Tokens", style="default", justify="right")
+        table.add_column("Last Message Preview", style="dim")
+
+        for idx, s in enumerate(sessions):
+            session_id = s.get("session_id", "Unknown")
+            updated_at_str = s.get("updated_at", "")
+            try:
+                dt = datetime.fromisoformat(updated_at_str)
+                last_active = dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                last_active = updated_at_str
+
+            turn_count = s.get("turn_count", 0)
+            token_usage = s.get("token_usage", {})
+            total_tokens = token_usage.get("total_tokens", 0)
+
+            messages = s.get("messages", [])
+            last_msg_preview = ""
+            if messages:
+                for m in reversed(messages):
+                    content = m.get("content", "").strip()
+                    if content:
+                        last_msg_preview = content[:40] + "..." if len(content) > 40 else content
+                        break
+
+            table.add_row(
+                str(idx + 1),
+                session_id,
+                last_active,
+                str(turn_count),
+                f"{total_tokens:,}",
+                last_msg_preview or "[No text content]",
+            )
+
+        self.console.print(table)
 
     def tool_call_start(self, *, call_id: str, name: str, tool_type: str | None, args: dict[str, Any]) -> None:
         self._tool_args_by_call_id[call_id] = args
