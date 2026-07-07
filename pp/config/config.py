@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import BaseModel, BeforeValidator, Field
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
 
 class ModelConfig(BaseModel):
@@ -54,9 +54,54 @@ class MCPServerConfig(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
 
 
+class HookConfig(BaseModel):
+    name: str
+    trigger: str
+    command: str | list[str] | None = None
+    script: str | None = None
+    timeout: float = Field(default=30.0, gt=0.0)
+    enabled: bool = True
+
+    @field_validator("trigger", mode="before")
+    @classmethod
+    def normalize_trigger(cls, v: Any) -> str:
+        if not isinstance(v, str):
+            raise ValueError("Trigger must be a string")
+        v_clean = v.strip().lower().replace("-", "_").replace(" ", "_")
+        if v_clean in ("on_reror", "on_error", "onerror", "on-reror", "on_reror"):
+            return "on_error"
+        if v_clean in ("before_agent", "beforeagent"):
+            return "before_agent"
+        if v_clean in ("after_agent", "afteragent"):
+            return "after_agent"
+        if v_clean in ("before_tool", "beforetool"):
+            return "before_tool"
+        if v_clean in ("after_tool", "aftertool"):
+            return "after_tool"
+        return v_clean
+
+    @model_validator(mode="after")
+    def validate_hook(self) -> HookConfig:
+        if not self.name or not self.name.strip():
+            raise ValueError("Hook name cannot be empty")
+
+        valid_triggers = {"before_agent", "after_agent", "before_tool", "after_tool", "on_error"}
+        if self.trigger not in valid_triggers:
+            raise ValueError(f"Invalid trigger: {self.trigger}. Must be one of {sorted(valid_triggers)}")
+
+        if self.command is not None and self.script is not None:
+            raise ValueError("Cannot specify both command and script in a hook config")
+        if self.command is None and self.script is None:
+            raise ValueError("Must specify either command or script in a hook config")
+
+        return self
+
+
 class Config(BaseModel):
     model: ModelConfig = Field(default_factory=ModelConfig)
     cwd: Path = Field(default_factory=Path.cwd)
+    hooks_enabled: bool = False
+    hooks: list[HookConfig] = Field(default_factory=list)
     shell_env_policy: ShellEnvironmentPolicy = Field(default_factory=ShellEnvironmentPolicy)
 
     max_turns: int = 100

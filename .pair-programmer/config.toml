@@ -1,0 +1,31 @@
+hooks_enabled = true
+
+[model]
+name = "google/gemini-2.5-flash"
+
+# Example 1: SQLite Server using uvx
+[mcp_servers.sqlite]
+command = "uvx"
+args = ["mcp-server-sqlite", "--db-path", "/Users/macbook/Desktop/my_database.db"]
+
+# 1. Dummy script hook that runs before the agent starts
+[[hooks]]
+name = "before_agent_test"
+trigger = "before agent"
+script = """
+echo "=== Agent Starting ===" >> hooks.log
+echo "Time: $(date)" >> hooks.log
+echo "User Prompt: $PP_AGENT_PROMPT" >> hooks.log
+echo "======================" >> hooks.log
+"""
+
+# 2. Dummy script hook that runs before any tool is executed
+[[hooks]]
+name = "before_tool_test"
+trigger = "before tool"
+script = """
+echo "--- Tool Invoked ---" >> hooks.log
+echo "Tool Name: $PP_TOOL_NAME" >> hooks.log
+echo "Arguments: $PP_TOOL_ARGS" >> hooks.log
+echo "--------------------" >> hooks.log
+"""

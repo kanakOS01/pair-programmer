@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from pp.config import Config
 from pp.context.manager import ContextManager
+from pp.hooks import HookSystem
 from pp.llm import OpenRouterLLM
 from pp.safety.approval import ApprovalManager
 from pp.tools.mcp.manager import MCPManager
@@ -29,6 +30,7 @@ class Session:
         self.created_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
         self._turn_count = 0
+        self.hook_system = HookSystem(config)
 
     async def initialize(self) -> None:
         await self.mcp_manager.initialize()

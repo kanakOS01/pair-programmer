@@ -26,16 +26,28 @@ class CodingAgent(BaseAgent):
 
     async def run(self, prompt: str) -> AsyncGenerator[AgentEvent]:
         yield AgentEvent.agent_start(message=prompt)
-        self.session.context_manager.add_user_message(prompt)
+        try:
+            await self.session.hook_system.run_hooks("before_agent", {"agent_prompt": prompt})
+            self.session.context_manager.add_user_message(prompt)
 
-        final_response = None
-        async for event in self._loop():
-            yield event
+            final_response = None
+            async for event in self._loop():
+                yield event
 
-            if event.type == AgentEventType.TextComplete:
-                final_response = event.data.get("content")
+                if event.type == AgentEventType.TextComplete:
+                    final_response = event.data.get("content")
 
-        yield AgentEvent.agent_done(final_response)
+            await self.session.hook_system.run_hooks(
+                "after_agent",
+                {
+                    "agent_prompt": prompt,
+                    "agent_response": final_response or "",
+                },
+            )
+            yield AgentEvent.agent_done(final_response)
+        except Exception as e:
+            await self.session.hook_system.run_hooks("on_error", {"agent_prompt": prompt, "error": str(e)})
+            raise e
 
     async def _loop(self) -> AsyncGenerator[AgentEvent, None]:
         """
@@ -66,7 +78,9 @@ class CodingAgent(BaseAgent):
                         tool_calls.append(event.tool_call)
 
                 elif event.type == LLMEventType.Error:
-                    yield AgentEvent.agent_error(error=event.error or "Unknown error")
+                    error_msg = event.error or "Unknown error"
+                    await self.session.hook_system.run_hooks("on_error", {"error": error_msg})
+                    yield AgentEvent.agent_error(error=error_msg)
 
                 elif event.type == LLMEventType.Done:
                     if event.tool_calls:
@@ -93,11 +107,29 @@ class CodingAgent(BaseAgent):
             for tool_call in tool_calls:
                 yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
 
+                await self.session.hook_system.run_hooks(
+                    "before_tool",
+                    {
+                        "tool_name": tool_call.name,
+                        "tool_args": json.dumps(tool_call.args),
+                    },
+                )
+
                 result = await self.session.tool_registry.invoke(
                     tool_call.name,
                     tool_call.args,
                     self.session.config.cwd,
                     approval_manager=self.session.approval_manager,
+                )
+
+                await self.session.hook_system.run_hooks(
+                    "after_tool",
+                    {
+                        "tool_name": tool_call.name,
+                        "tool_args": json.dumps(tool_call.args),
+                        "tool_result": result.to_model_output(),
+                        "tool_success": str(result.ok),
+                    },
                 )
 
                 yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
