@@ -431,7 +431,7 @@ class CLI:
 
     def _set_config_attr(self, key: str, value_str: str) -> bool:
         parts = key.split(".")
-        obj = self.config
+        obj: Any = self.config
         for p in parts[:-1]:
             if hasattr(obj, p):
                 obj = getattr(obj, p)
@@ -445,6 +445,7 @@ class CLI:
         current_val = getattr(obj, attr)
         expected_type = type(current_val) if current_val is not None else str
 
+        val: Any
         try:
             if expected_type is bool:
                 if value_str.lower() in ("true", "1", "yes", "on"):

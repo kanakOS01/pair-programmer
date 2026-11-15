@@ -22,7 +22,7 @@ class BaseLLM(ABC):
     def generate(
         self,
         messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
         stream: bool = True,
     ) -> AsyncGenerator[LLMEvent, None]: ...
 

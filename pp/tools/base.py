@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import builtins
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ValidationError
 from pydantic.json_schema import model_json_schema
@@ -9,12 +10,18 @@ from pydantic.json_schema import model_json_schema
 from pp.config.config import Config
 from pp.domain import ToolConfirmation, ToolInvocation, ToolResult, ToolType
 
+if TYPE_CHECKING:
+    from pp.core.session import Session
+
 
 class Tool(ABC):
     name: str
     description: str
     type: ToolType
-    schema: type[BaseModel] | dict[str, Any]
+    # Use builtins.type: inside this class, "type" is the ToolType attribute above.
+    schema: builtins.type[BaseModel] | dict[str, Any]
+    # The owning session. Session sets it after the tool is registered.
+    session: Session | None = None
 
     def __init__(self, config: Config) -> None:
         self.config = config

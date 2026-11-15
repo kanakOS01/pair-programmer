@@ -79,7 +79,7 @@ class ReadUrlTool(Tool):
             raise ValueError("Unable to resolve host") from None
 
         for info in infos:
-            ip_obj = ipaddress.ip_address(info[4][0].split("%")[0])
+            ip_obj = ipaddress.ip_address(str(info[4][0]).split("%")[0])
             if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
                 ip_obj = ip_obj.ipv4_mapped
 

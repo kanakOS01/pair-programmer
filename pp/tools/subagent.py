@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class SubagentDefinition(BaseModel):
-    name: str | None = None
+    name: str
     description: str | None = None
     goal_prompt: str
     allowed_tools: list[str] | None = None

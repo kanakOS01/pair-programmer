@@ -336,9 +336,11 @@ class TUI:
         if name == "read_file" and success:
             data = self._extract_read_file_code(output)
             if data:
-                start_line, code = data
+                parsed_start_line, code = data
 
-                start_line, end_line, total_lines = None, None, None
+                start_line: int | None = None
+                end_line: int | None = None
+                total_lines: int | None = None
                 if isinstance(meta, dict):
                     start_line = meta.get("start_line")
                     end_line = meta.get("end_line")
@@ -361,7 +363,7 @@ class TUI:
                         language,
                         theme=self._CODE_THEME,
                         line_numbers=True,
-                        start_line=start_line or 1,
+                        start_line=start_line or parsed_start_line,
                         word_wrap=False,
                     )
                 )

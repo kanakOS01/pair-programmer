@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class MCPClient:
-    def __init__(self, name: str, command: str, args: list[str] = None, env: dict[str, str] = None) -> None:
+    def __init__(self, name: str, command: str, args: list[str] | None = None, env: dict[str, str] | None = None) -> None:
         self.name = name
         self.command = command
         self.args = args or []
@@ -151,11 +151,11 @@ class MCPClient:
             self._pending_requests.pop(req_id, None)
             raise e
 
-    async def _send_notification(self, method: str, params: dict[str, Any] = None) -> None:
+    async def _send_notification(self, method: str, params: dict[str, Any] | None = None) -> None:
         if not self._process or not self._process.stdin:
             raise RuntimeError("MCP client connection is not active")
 
-        message = {
+        message: dict[str, Any] = {
             "jsonrpc": "2.0",
             "method": method,
         }
@@ -204,6 +204,8 @@ class MCPClient:
                             },
                         }
                         try:
+                            if not self._process.stdin:
+                                raise RuntimeError("stdin is closed")
                             self._process.stdin.write((json.dumps(error_resp) + "\n").encode("utf-8"))
                             await self._process.stdin.drain()
                         except Exception as e:

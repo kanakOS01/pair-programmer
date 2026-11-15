@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pp.config import Config
 from pp.domain import ToolConfirmation, ToolInvocation, ToolResult
 from pp.safety import ApprovalDecision, ApprovalManager
 from pp.tools.base import Tool
 from pp.tools.builtin import get_builtin_tools
+
+if TYPE_CHECKING:
+    from pp.core.session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -31,15 +34,16 @@ def create_default_registry(config: Config) -> ToolRegistry:
 
 
 class ToolRegistry:
-    def __init__(self):
+    def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
+        self.session: Session | None = None
 
     def register(self, tool: Tool) -> None:
         if tool.name in self._tools:
             logger.warning(f"Overwriting existing tool {tool.name}")
 
         self._tools[tool.name] = tool
-        if hasattr(self, "session"):
+        if self.session is not None:
             tool.session = self.session
         logger.debug(f"Tool {tool.name} registered")
 
