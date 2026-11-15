@@ -1,7 +1,10 @@
 hooks_enabled = true
 
 [model]
-name = "openai/gpt-oss-120b"
+# The default is provider = "openai" with name = "gpt-6.1-sol".
+# To use a model through OpenRouter, set for example:
+#   provider = "openrouter"
+#   name = "openai/gpt-oss-120b"
 
 # Example 1: SQLite Server using uvx
 [mcp_servers.sqlite]

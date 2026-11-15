@@ -24,6 +24,8 @@ class CLI:
         self.tui: TUI = TUI(config, console)
 
     def _confirm_tool_call(self, confirmation: ToolConfirmation) -> bool:
+        # A live display (spinner or tool panel) redraws its area and can hide this question.
+        self.tui.stop_live_displays()
         self.tui.console.print()
         self.tui.console.print("[warning]Requires Confirmation:[/warning]")
         self.tui.console.print(f"Tool: [info]{confirmation.tool_name}[/info]")
@@ -99,7 +101,7 @@ class CLI:
             self.tui.welcome(
                 title="Pair Programmer",
                 lines=[
-                    f"Model: {self.config.model_name}",
+                    f"Model: {self.config.model_name} ({self.config.model.provider.value})",
                     f"cwd: {self.config.cwd}",
                     f"Session ID: {agent.session.session_id}",
                     *self._mcp_summary_lines(),
@@ -135,55 +137,69 @@ class CLI:
         assistant_streaming = False
         final_response: str | None = None
 
-        async for event in self.coding_agent.run(message):
-            if event.type == AgentEventType.TextDelta:
-                if not assistant_streaming:
-                    self.tui.stream_start()
-                    assistant_streaming = True
+        self.tui.thinking_start()
+        try:
+            async for event in self.coding_agent.run(message):
+                # Stop the spinner before any output. Start and Done print nothing, so the spinner keeps running.
+                # It starts again when the model works after a tool call.
+                if event.type not in (AgentEventType.Start, AgentEventType.Done):
+                    self.tui.thinking_stop()
 
-                content = event.data.get("content", "")
-                self.tui.stream_delta(content)
+                if event.type == AgentEventType.TextDelta:
+                    if not assistant_streaming:
+                        self.tui.stream_start()
+                        assistant_streaming = True
 
-            elif event.type == AgentEventType.TextComplete:
-                # Do not return here: the same turn can also contain tool calls.
-                final_response = event.data.get("content", "")
-                if assistant_streaming:
-                    self.tui.stream_end()
-                    assistant_streaming = False
+                    content = event.data.get("content", "")
+                    self.tui.stream_delta(content)
 
-            elif event.type == AgentEventType.Done:
-                final_response = event.data.get("response") or final_response
+                elif event.type == AgentEventType.TextComplete:
+                    # Do not return here: the same turn can also contain tool calls.
+                    final_response = event.data.get("content", "")
+                    if assistant_streaming:
+                        self.tui.stream_end()
+                        assistant_streaming = False
 
-            elif event.type == AgentEventType.Error:
-                error = event.data.get("error", "Unkown error")
-                self.tui.error(error)
+                elif event.type == AgentEventType.Done:
+                    final_response = event.data.get("response") or final_response
 
-            elif event.type == AgentEventType.ToolCallStart:
-                tool_name = event.data.get("name", "Unknown")
-                tool = self.coding_agent.session.tool_registry.get(tool_name)
-                tool_type = tool.type.value if tool else None
+                elif event.type == AgentEventType.Error:
+                    error = event.data.get("error", "Unkown error")
+                    self.tui.error(error)
 
-                self.tui.tool_call_start(
-                    call_id=event.data.get("call_id", ""), name=tool_name, tool_type=tool_type, args=event.data.get("args", {})
-                )
+                elif event.type == AgentEventType.ToolCallStart:
+                    tool_name = event.data.get("name", "Unknown")
+                    tool = self.coding_agent.session.tool_registry.get(tool_name)
+                    tool_type = tool.type.value if tool else None
 
-            elif event.type == AgentEventType.ToolCallDone:
-                tool_name = event.data.get("name", "Unknown")
-                tool = self.coding_agent.session.tool_registry.get(tool_name)
-                tool_type = tool.type.value if tool else None
+                    self.tui.tool_call_start(
+                        call_id=event.data.get("call_id", ""),
+                        name=tool_name,
+                        tool_type=tool_type,
+                        args=event.data.get("args", {}),
+                    )
 
-                self.tui.tool_call_done(
-                    call_id=event.data.get("call_id", ""),
-                    name=tool_name,
-                    tool_type=tool_type,
-                    success=event.data.get("success", False),
-                    output=event.data.get("output", ""),
-                    error=event.data.get("error", None),
-                    diff=event.data.get("diff", None),
-                    truncated=event.data.get("truncated", False),
-                    exit_code=event.data.get("exit_code"),
-                    meta=event.data.get("metadata", None),
-                )
+                elif event.type == AgentEventType.ToolCallDone:
+                    tool_name = event.data.get("name", "Unknown")
+                    tool = self.coding_agent.session.tool_registry.get(tool_name)
+                    tool_type = tool.type.value if tool else None
+
+                    self.tui.tool_call_done(
+                        call_id=event.data.get("call_id", ""),
+                        name=tool_name,
+                        tool_type=tool_type,
+                        success=event.data.get("success", False),
+                        output=event.data.get("output", ""),
+                        error=event.data.get("error", None),
+                        diff=event.data.get("diff", None),
+                        truncated=event.data.get("truncated", False),
+                        exit_code=event.data.get("exit_code"),
+                        meta=event.data.get("metadata", None),
+                    )
+                    # The model gets the tool result next and works on it.
+                    self.tui.thinking_start()
+        finally:
+            self.tui.thinking_stop()
 
         if assistant_streaming:
             self.tui.stream_end()
@@ -363,8 +379,10 @@ class CLI:
         args = args.strip()
         if not args:
             config_data = [
+                ("model.provider", self.config.model.provider.value, "openai | openrouter"),
                 ("model.name", self.config.model.name, "str"),
-                ("model.temp", self.config.model.temp, "float"),
+                ("model.temp", self.config.model.temp, "float | None"),
+                ("model.reasoning_effort", self.config.model.reasoning_effort, "none | low | medium | high | xhigh | max"),
                 ("model.context_window", self.config.model.context_window, "int"),
                 ("cwd", str(self.config.cwd), "Path"),
                 ("max_turns", self.config.max_turns, "int"),
@@ -459,7 +477,10 @@ class CLI:
 
         val: Any
         try:
-            if expected_type is bool:
+            if value_str.lower() in ("none", "null") and key != "allowed_tools":
+                # Clear an optional setting, for example model.temp. Pydantic rejects it for required settings.
+                val = None
+            elif expected_type is bool:
                 if value_str.lower() in ("true", "1", "yes", "on"):
                     val = True
                 elif value_str.lower() in ("false", "0", "no", "off"):

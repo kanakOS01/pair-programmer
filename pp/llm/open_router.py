@@ -1,9 +1,9 @@
-import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from copy import deepcopy
 from typing import Any, AsyncGenerator, override
 
-from openai import APIConnectionError, APIError, APIStatusError, AsyncOpenAI, RateLimitError
+from openai import AsyncOpenAI
 
 from pp.config import Config
 from pp.domain import (
@@ -19,21 +19,19 @@ from pp.domain import (
     ToolResultEntry,
     UserMessage,
 )
-from pp.llm import BaseLLM
+from pp.llm.base import BaseLLM
 
 
 class OpenRouterLLM(BaseLLM):
+    """Adapter for OpenRouter (and other OpenAI-compatible servers) through the Chat Completions API."""
+
     def __init__(self, cfg: Config) -> None:
         super().__init__(cfg)
         self._client: AsyncOpenAI | None = None
 
-    @override
     def get_client(self) -> Any:
         if self._client is None:
-            self._client = AsyncOpenAI(
-                base_url=self.cfg.base_url,
-                api_key=self.cfg.api_key,
-            )
+            self._client = self._new_client()
         return self._client
 
     @override
@@ -52,62 +50,38 @@ class OpenRouterLLM(BaseLLM):
     ) -> AsyncGenerator[LLMEvent, None]:
         client = self.get_client()
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "model": self.cfg.model_name,
             "messages": to_openai_messages(entries, system_prompt),
-            "temperature": self.cfg.temperature,
         }
+        if self.cfg.temperature is not None:
+            kwargs["temperature"] = self.cfg.temperature
 
         if tools:
             kwargs["tools"] = self._build_tools(tools)
             kwargs["tool_choice"] = "auto"
 
-        retries = max(1, self._retries)
-        for attempt in range(retries):
-            # If an event was already sent to the caller, a retry would send the same text again.
-            yielded = False
-            try:
-                if stream:
-                    async for event in self._generate_stream(client, kwargs):
-                        yielded = True
-                        yield event
-                else:
-                    yield await self._generate_non_stream(client, kwargs)
+        async def attempt() -> AsyncIterator[LLMEvent]:
+            if stream:
+                async for event in self._generate_stream(client, kwargs):
+                    yield event
+            else:
+                yield await self._generate_non_stream(client, kwargs)
 
-                return
+        async for event in self._with_retries(attempt):
+            yield event
 
-            except APIError as e:
-                if yielded or attempt == retries - 1 or not self._is_retryable(e):
-                    yield LLMEvent.stream_error(error=self._error_message(e))
-                    return
-                await asyncio.sleep(2**attempt)
-
-    @staticmethod
-    def _is_retryable(error: APIError) -> bool:
-        if isinstance(error, (RateLimitError, APIConnectionError)):
-            return True
-        if isinstance(error, APIStatusError):
-            # A 4xx error (bad request, auth, not found) does not change on a retry.
-            return error.status_code >= 500 or error.status_code in (408, 409)
-        return False
-
-    @staticmethod
-    def _error_message(error: APIError) -> str:
-        if isinstance(error, RateLimitError):
-            return f"Rate limit exceeded. {error}"
-        if isinstance(error, APIConnectionError):
-            return f"API connection error. {error}"
-        if isinstance(error, APIStatusError):
-            return f"API error (HTTP {error.status_code}). {error}"
-        return f"Error decoding response. {error}"
+    def _build_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [{"type": "function", "function": deepcopy(tool)} for tool in tools]
 
     async def _generate_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> AsyncGenerator[LLMEvent, None]:
         params = {
             "model": kwargs["model"],
             "messages": kwargs["messages"],
-            "temperature": kwargs["temperature"],
             "stream": True,
         }
+        if "temperature" in kwargs:
+            params["temperature"] = kwargs["temperature"]
         if "tools" in kwargs:
             params["tools"] = kwargs["tools"]
             params["tool_choice"] = kwargs.get("tool_choice", "auto")
@@ -194,9 +168,10 @@ class OpenRouterLLM(BaseLLM):
         params = {
             "model": kwargs["model"],
             "messages": kwargs["messages"],
-            "temperature": kwargs["temperature"],
             "stream": False,
         }
+        if "temperature" in kwargs:
+            params["temperature"] = kwargs["temperature"]
         if "tools" in kwargs:
             params["tools"] = kwargs["tools"]
             params["tool_choice"] = kwargs.get("tool_choice", "auto")

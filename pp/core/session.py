@@ -8,7 +8,7 @@ from pp.config import Config
 from pp.context import ConversationHistory
 from pp.domain import LLMEventType, TokenUsage, UserMessage
 from pp.hooks import HookSystem
-from pp.llm import OpenRouterLLM
+from pp.llm import create_llm
 from pp.prompts.system import get_compaction_prompt, get_system_prompt
 from pp.tools.base import Tool
 from pp.tools.executor import ToolExecutor
@@ -23,7 +23,7 @@ class Session:
 
     def __init__(self, config: Config):
         self.config = config
-        self.llm = OpenRouterLLM(config)
+        self.llm = create_llm(config)
         self.tool_registry = create_default_registry(config)
         self.tool_registry.session = self
         self.mcp_manager = MCPManager(config)

@@ -88,7 +88,7 @@ async def test_subagent_tool_calls_run_hooks(config: Config, project: Path, monk
 
     # The subagent builds its own LLM inside Session. Give it a scripted one.
     child_llm = FakeLLM([tool_turn("", "s1", "list_dir", {}), text_turn("found it")])
-    monkeypatch.setattr(pp.core.session, "OpenRouterLLM", lambda cfg: child_llm)
+    monkeypatch.setattr(pp.core.session, "create_llm", lambda cfg: child_llm)
 
     parent_llm = FakeLLM([tool_turn("", "p1", "subagent_codebase_investigator", {"task": "look around"}), text_turn("done")])
     agent, events = await run_agent(config, parent_llm)

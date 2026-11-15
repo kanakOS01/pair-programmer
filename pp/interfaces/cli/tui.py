@@ -1,4 +1,5 @@
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from rich.markdown import Markdown
 from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
+from rich.spinner import Spinner
 from rich.status import Status
 from rich.syntax import Syntax
 from rich.table import Table
@@ -20,6 +22,20 @@ from pp.config import Config
 from pp.domain import TokenUsage
 from pp.interfaces.cli.themes import DEFAULT_THEME
 from pp.utils.text import truncate_text
+
+
+class _Thinking:
+    """A spinner with the seconds since it started. Live calls __rich__ on each refresh, so the counter updates."""
+
+    def __init__(self) -> None:
+        self._start = time.monotonic()
+        self._spinner = Spinner("dots", style="info")
+
+    def __rich__(self) -> RenderableType:
+        seconds = int(time.monotonic() - self._start)
+        self._spinner.update(text=Text(f"Thinking… {seconds}s", style="muted"))
+        return self._spinner
+
 
 # singleton console
 _console: Console | None = None
@@ -44,6 +60,29 @@ class TUI:
         self._live_tool_call: Live | None = None
         self._live_stream: Live | None = None
         self._stream_content: str = ""
+        self._live_thinking: Live | None = None
+
+    def thinking_start(self) -> None:
+        """Show a spinner while pp waits for the model. Rich allows one live display, so only start it when none runs."""
+        if self._live_thinking or self._live_stream or self._live_tool_call:
+            return
+        self._live_thinking = Live(_Thinking(), console=self.console, refresh_per_second=8, transient=True)
+        self._live_thinking.start()
+
+    def thinking_stop(self) -> None:
+        if self._live_thinking:
+            self._live_thinking.stop()
+            self._live_thinking = None
+
+    def stop_live_displays(self) -> None:
+        """Stop every live display. Call this before reading input: a live display can draw over the prompt."""
+        self.thinking_stop()
+        if self._live_tool_call:
+            self._live_tool_call.stop()
+            self._live_tool_call = None
+        if self._live_stream:
+            self._live_stream.stop()
+            self._live_stream = None
 
     def stream_start(self) -> None:
         self.console.print()

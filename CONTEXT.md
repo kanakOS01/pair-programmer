@@ -53,3 +53,9 @@ _Avoid_: prompt, approval request
 
 **Hook**:
 A user-configured command that runs at a fixed point: before or after the agent, before or after a tool call, or on error.
+
+### Models
+
+**Provider**:
+The service that runs the model: `openai` (the OpenAI API, through the Responses API) or `openrouter` (OpenRouter, through the Chat Completions API). The user sets it in `[model] provider`; pp never guesses it from the model name.
+_Avoid_: backend, vendor

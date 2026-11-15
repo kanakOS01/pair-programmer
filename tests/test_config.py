@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from pp.config import Config, load_config
-from pp.config.config import ApprovalPolicy, HookConfig
+from pp.config.config import ApprovalPolicy, HookConfig, Provider
 from pp.hooks import HookSystem
 from pp.utils.errors import ConfigError
 
@@ -67,7 +67,8 @@ def clean_environ(monkeypatch: pytest.MonkeyPatch):
     """Give the test its own copy of os.environ without API_KEY, so loaded values cannot leak to other tests."""
     import os
 
-    environ = {k: v for k, v in os.environ.items() if k not in ("API_KEY", "BASE_URL")}
+    removed = ("API_KEY", "BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENROUTER_API_KEY", "OPENROUTER_BASE_URL")
+    environ = {k: v for k, v in os.environ.items() if k not in removed}
     monkeypatch.setattr(os, "environ", environ)
     return environ
 
@@ -78,7 +79,7 @@ def write_env(directory: Path, text: str) -> None:
 
 
 def test_api_key_from_project_env_file(project: Path, clean_environ):
-    write_env(project / ".pair-programmer", "API_KEY=project-key\n")
+    write_env(project / ".pair-programmer", "OPENAI_API_KEY=project-key\n")
 
     config = load_config(project)
 
@@ -87,14 +88,14 @@ def test_api_key_from_project_env_file(project: Path, clean_environ):
 
 
 def test_api_key_from_home_env_file(project: Path, clean_environ):
-    write_env(Path.home() / ".pair-programmer", "API_KEY=home-key\n")
+    write_env(Path.home() / ".pair-programmer", "OPENAI_API_KEY=home-key\n")
 
     assert load_config(project).api_key == "home-key"
 
 
 def test_project_env_file_wins_over_home(project: Path, clean_environ):
-    write_env(Path.home() / ".pair-programmer", "API_KEY=home-key\nBASE_URL=https://home.example\n")
-    write_env(project / ".pair-programmer", "API_KEY=project-key\n")
+    write_env(Path.home() / ".pair-programmer", "OPENAI_API_KEY=home-key\nOPENAI_BASE_URL=https://home.example\n")
+    write_env(project / ".pair-programmer", "OPENAI_API_KEY=project-key\n")
 
     config = load_config(project)
 
@@ -103,8 +104,8 @@ def test_project_env_file_wins_over_home(project: Path, clean_environ):
 
 
 def test_exported_variable_wins_over_env_file(project: Path, clean_environ):
-    clean_environ["API_KEY"] = "exported-key"
-    write_env(project / ".pair-programmer", "API_KEY=file-key\n")
+    clean_environ["OPENAI_API_KEY"] = "exported-key"
+    write_env(project / ".pair-programmer", "OPENAI_API_KEY=file-key\n")
 
     assert load_config(project).api_key == "exported-key"
 
@@ -112,7 +113,7 @@ def test_exported_variable_wins_over_env_file(project: Path, clean_environ):
 def test_env_file_syntax(project: Path, clean_environ):
     write_env(
         project / ".pair-programmer",
-        "# comment\n\nexport API_KEY=\"quoted key\"\nBASE_URL = 'https://x.example'\nnot a valid line\n",
+        "# comment\n\nexport OPENAI_API_KEY=\"quoted key\"\nOPENAI_BASE_URL = 'https://x.example'\nnot a valid line\n",
     )
 
     config = load_config(project)
@@ -124,3 +125,49 @@ def test_env_file_syntax(project: Path, clean_environ):
 def test_missing_key_error_names_the_env_file(project: Path, clean_environ):
     errors = load_config(project).get_validation_errors()
     assert any(".pair-programmer/.env" in e for e in errors)
+
+
+# ---------- providers ----------
+
+
+def test_default_model_is_openai_sol(project: Path):
+    config = Config(cwd=project)
+    assert config.model.provider == Provider.OPENAI
+    assert config.model_name == "gpt-6.1-sol"
+    assert config.temperature is None
+    assert config.base_url == "https://api.openai.com/v1"
+
+
+def test_openai_ignores_openrouter_variables(project: Path, clean_environ):
+    clean_environ.update(API_KEY="sk-or-old", BASE_URL="https://openrouter.ai/api/v1")
+    config = Config(cwd=project)
+
+    assert config.api_key == ""
+    assert config.base_url == "https://api.openai.com/v1"
+    assert any("OPENAI_API_KEY" in e for e in config.get_validation_errors())
+
+
+def test_openrouter_keys_and_old_api_key_name(project: Path, clean_environ):
+    config = Config(cwd=project, model={"provider": "openrouter", "name": "openai/gpt-oss-120b"})
+
+    clean_environ["API_KEY"] = "old-name-key"
+    assert config.api_key == "old-name-key"
+    assert config.base_url == "https://openrouter.ai/api/v1"
+
+    clean_environ["OPENROUTER_API_KEY"] = "new-name-key"
+    assert config.api_key == "new-name-key"
+
+
+def test_model_settings_are_validated_on_assignment(project: Path):
+    config = Config(cwd=project)
+
+    config.model.provider = "openrouter"  # type: ignore[assignment]
+    assert config.model.provider == Provider.OPENROUTER
+
+    config.model.temp = "0.5"  # type: ignore[assignment]
+    assert config.model.temp == 0.5
+
+    with pytest.raises(ValidationError):
+        config.model.provider = "anthropic"  # type: ignore[assignment]
+    with pytest.raises(ValidationError):
+        config.model.reasoning_effort = "extreme"  # type: ignore[assignment]

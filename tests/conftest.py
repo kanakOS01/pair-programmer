@@ -15,6 +15,7 @@ from pp.domain import Entry, LLMEvent, LLMEventType, TextDelta, TokenUsage, Tool
 def isolated_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Keep sessions and memory out of the real home directory.
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("API_KEY", "test-key")
     # tiktoken downloads its vocabulary on first use. Use the character estimate, so tests need no network.
     monkeypatch.setattr(pp.utils.text, "get_tokenizer", lambda model: None)

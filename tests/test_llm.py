@@ -4,7 +4,7 @@ import httpx
 import pytest
 from openai import APIConnectionError, BadRequestError, InternalServerError, RateLimitError
 
-import pp.llm.open_router as open_router
+import pp.llm.base as llm_base
 from pp.config import Config
 from pp.domain import LLMEvent, LLMEventType, TextDelta, UserMessage
 from pp.llm import OpenRouterLLM
@@ -45,7 +45,7 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch):
     async def sleep(_):
         pass
 
-    monkeypatch.setattr(open_router.asyncio, "sleep", sleep)
+    monkeypatch.setattr(llm_base.asyncio, "sleep", sleep)
 
 
 async def collect(llm: OpenRouterLLM) -> list[LLMEvent]:
