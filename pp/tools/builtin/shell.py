@@ -2,7 +2,6 @@ import asyncio
 import fnmatch
 import os
 import re
-import signal
 import sys
 from typing import Any
 
@@ -11,6 +10,7 @@ from pydantic import BaseModel, Field
 from pp.domain import ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import resolve_path_safe
+from pp.utils.process import signal_process_group
 
 
 class ShellToolParams(BaseModel):
@@ -80,7 +80,7 @@ class ShellTool(Tool):
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=params.timeout)
         except asyncio.TimeoutError:
-            self._kill_process_group(process)
+            signal_process_group(process)
             await process.wait()
             return ToolResult.error_result(f"Command '{cmd}' timed out after {params.timeout} seconds")
 
@@ -112,17 +112,6 @@ class ShellTool(Tool):
             if pattern.search(normalized):
                 return pattern.pattern
         return None
-
-    @staticmethod
-    def _kill_process_group(process: asyncio.subprocess.Process) -> None:
-        # The process starts a new session, so kill the whole group. This also stops child processes.
-        try:
-            if sys.platform == "win32":
-                process.kill()
-            else:
-                os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
     def _build_environment(self) -> dict[str, str]:
         env = os.environ.copy()

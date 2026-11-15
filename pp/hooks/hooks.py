@@ -5,6 +5,7 @@ import shlex
 from typing import Any, Optional
 
 from pp.config.config import Config, HookConfig
+from pp.utils.process import signal_process_group
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,8 @@ class HookSystem:
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
                     cwd=cwd,
+                    # Own process group: a Ctrl-C in the terminal does not stop the hook halfway.
+                    start_new_session=True,
                 )
             elif hook.command is not None:
                 # Run command
@@ -86,6 +89,8 @@ class HookSystem:
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
                     cwd=cwd,
+                    # Own process group: a Ctrl-C in the terminal does not stop the hook halfway.
+                    start_new_session=True,
                 )
             else:
                 return
@@ -106,7 +111,7 @@ class HookSystem:
             except asyncio.TimeoutError:
                 # Kill process on timeout
                 try:
-                    proc.kill()
+                    signal_process_group(proc)
                     await proc.wait()
                 except Exception:
                     pass

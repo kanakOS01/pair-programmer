@@ -7,6 +7,8 @@ import logging
 import os
 from typing import Any
 
+from pp.utils.process import stop_process_group
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,6 +47,9 @@ class MCPClient:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                # Own process group: a Ctrl-C in the terminal goes to pp only, not to the server.
+                # disconnect() stops the group, which includes children such as the server that uvx starts.
+                start_new_session=True,
             )
         except Exception as e:
             logger.error(f"Failed to start MCP server process '{self.name}': {e}")
@@ -93,13 +98,9 @@ class MCPClient:
 
         if self._process:
             try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=2.0)
-            except Exception:
-                try:
-                    self._process.kill()
-                except Exception:
-                    pass
+                await stop_process_group(self._process)
+            except Exception as e:
+                logger.debug(f"[MCP {self.name}] Error while stopping the server: {e}")
             self._process = None
 
         # Cancel/reject all pending futures

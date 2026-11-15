@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -171,3 +172,15 @@ def test_model_settings_are_validated_on_assignment(project: Path):
         config.model.provider = "anthropic"  # type: ignore[assignment]
     with pytest.raises(ValidationError):
         config.model.reasoning_effort = "extreme"  # type: ignore[assignment]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="uses process groups")
+async def test_hooks_run_in_own_process_group(config: Config, project: Path):
+    import os
+
+    config.hooks_enabled = True
+    config.hooks = [HookConfig(name="pgid", trigger="before agent", script="ps -o pgid= -p $$ > pgid.txt")]
+
+    await HookSystem(config).run_hooks("before_agent", {})
+
+    assert int((project / "pgid.txt").read_text()) != os.getpgid(0)

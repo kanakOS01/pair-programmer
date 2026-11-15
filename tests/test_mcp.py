@@ -170,3 +170,53 @@ async def test_cli_shows_mcp_failures(tmp_path: Path, project: Path):
     assert summary == ["MCP broken: failed (see below)", "MCP demo: connected, 1 tools"]
     assert "MCP server 'broken' did not start" in output
     assert "Permission denied: '/Users/macbook'" in output
+
+
+# A server that starts a long-running child process (as uvx does), writes the child pid and its own
+# process group to a file, then serves as ECHO_SERVER.
+PARENT_SERVER = (
+    """
+import json, os, subprocess, sys
+child = subprocess.Popen(["sleep", "600"])
+with open(sys.argv[1], "w") as f:
+    json.dump({"child": child.pid, "pgid": os.getpgid(0)}, f)
+"""
+    + ECHO_SERVER
+)
+
+
+def is_running(pid: int) -> bool:
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # A zombie still has a pid but is not running.
+    import subprocess
+
+    state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return bool(state) and not state.startswith("Z")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="uses process groups")
+async def test_server_runs_in_own_process_group_and_stops_with_children(tmp_path: Path, project: Path):
+    import json
+    import os
+
+    info_file = tmp_path / "info.json"
+    script = server_script(tmp_path, "parent", PARENT_SERVER)
+    config = Config(cwd=project, mcp_servers={"demo": MCPServerConfig(command=sys.executable, args=[script, str(info_file)])})
+    manager = MCPManager(config)
+
+    await manager.initialize()
+    info = json.loads(info_file.read_text())
+
+    # A Ctrl-C goes to the terminal's foreground process group. The server is not in ours.
+    assert info["pgid"] != os.getpgid(0)
+    assert is_running(info["child"])
+
+    await manager.close()
+
+    # Stopping the server also stops the child that it started.
+    assert not is_running(info["child"])
