@@ -150,7 +150,9 @@ class Config(BaseModel):
         errors: list[str] = []
 
         if not self.api_key:
-            errors.append("No API key found. Set API_KEY environment variable")
+            errors.append(
+                "No API key found. Put API_KEY=... in .pair-programmer/.env (project or home directory), or export API_KEY"
+            )
 
         if not self.cwd.exists():
             errors.append(f"Working directory does not exist: {self.cwd}")

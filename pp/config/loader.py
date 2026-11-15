@@ -1,4 +1,5 @@
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 AGENT_MD_FILE = "AGENT.md"
 CONFIG_FILE_NAME = "config.toml"
+ENV_FILE_NAME = ".env"
+PROJECT_DIR_NAME = ".pair-programmer"
 
 
 def get_system_config_path() -> Path:
@@ -20,6 +23,8 @@ def get_system_config_path() -> Path:
 
 def load_config(cwd: Path | None) -> Config:
     cwd = cwd or Path.cwd()
+
+    load_env_files(cwd)
 
     system_path = get_system_config_path()
 
@@ -67,7 +72,7 @@ def _parse_toml(path: Path):
 
 def _get_project_config(cwd: Path) -> Path | None:
     current = cwd.resolve()
-    agent_dir = current / ".pair-programmer"
+    agent_dir = current / PROJECT_DIR_NAME
 
     if agent_dir.is_dir():
         config_file = agent_dir / CONFIG_FILE_NAME
@@ -98,3 +103,40 @@ def _merge_dicts(base: dict[str, Any], override: dict[str, Any]) -> dict[str, An
             result[key] = value
 
     return result
+
+
+def load_env_files(cwd: Path) -> None:
+    """Set environment variables from .env files, so that API_KEY need not be exported in the shell.
+
+    Order of precedence: variables already in the environment, then <project>/.pair-programmer/.env,
+    then ~/.pair-programmer/.env. A file never replaces a variable that is already set.
+    """
+    for path in (cwd.resolve() / PROJECT_DIR_NAME / ENV_FILE_NAME, get_config_dir() / ENV_FILE_NAME):
+        if not path.is_file():
+            continue
+        try:
+            values = _parse_env_file(path)
+        except OSError as e:
+            logger.warning(f"Skipping unreadable env file {path}: {e}")
+            continue
+        for key, value in values.items():
+            os.environ.setdefault(key, value)
+
+
+def _parse_env_file(path: Path) -> dict[str, str]:
+    """Parse KEY=VALUE lines. Ignore empty lines and comments. Accept an "export " prefix and quoted values."""
+    values: dict[str, str] = {}
+    for line_no, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.removeprefix("export ").strip()
+        key, sep, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if not sep or not key:
+            logger.warning(f"Skipping invalid line {line_no} in {path}")
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        values[key] = value
+    return values

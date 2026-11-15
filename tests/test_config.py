@@ -57,3 +57,70 @@ async def test_hook_env_values_are_truncated(config: Config, project: Path):
     out = (project / "out.txt").read_text()
     assert len(out) < HookSystem.MAX_ENV_VALUE_CHARS + 100
     assert out.endswith("[truncated]")
+
+
+# ---------- .env files ----------
+
+
+@pytest.fixture
+def clean_environ(monkeypatch: pytest.MonkeyPatch):
+    """Give the test its own copy of os.environ without API_KEY, so loaded values cannot leak to other tests."""
+    import os
+
+    environ = {k: v for k, v in os.environ.items() if k not in ("API_KEY", "BASE_URL")}
+    monkeypatch.setattr(os, "environ", environ)
+    return environ
+
+
+def write_env(directory: Path, text: str) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / ".env").write_text(text)
+
+
+def test_api_key_from_project_env_file(project: Path, clean_environ):
+    write_env(project / ".pair-programmer", "API_KEY=project-key\n")
+
+    config = load_config(project)
+
+    assert config.api_key == "project-key"
+    assert config.get_validation_errors() == []
+
+
+def test_api_key_from_home_env_file(project: Path, clean_environ):
+    write_env(Path.home() / ".pair-programmer", "API_KEY=home-key\n")
+
+    assert load_config(project).api_key == "home-key"
+
+
+def test_project_env_file_wins_over_home(project: Path, clean_environ):
+    write_env(Path.home() / ".pair-programmer", "API_KEY=home-key\nBASE_URL=https://home.example\n")
+    write_env(project / ".pair-programmer", "API_KEY=project-key\n")
+
+    config = load_config(project)
+
+    assert config.api_key == "project-key"
+    assert config.base_url == "https://home.example"
+
+
+def test_exported_variable_wins_over_env_file(project: Path, clean_environ):
+    clean_environ["API_KEY"] = "exported-key"
+    write_env(project / ".pair-programmer", "API_KEY=file-key\n")
+
+    assert load_config(project).api_key == "exported-key"
+
+
+def test_env_file_syntax(project: Path, clean_environ):
+    write_env(
+        project / ".pair-programmer",
+        "# comment\n\nexport API_KEY=\"quoted key\"\nBASE_URL = 'https://x.example'\nnot a valid line\n",
+    )
+
+    config = load_config(project)
+
+    assert config.api_key == "quoted key"
+    assert config.base_url == "https://x.example"
+
+
+def test_missing_key_error_names_the_env_file(project: Path, clean_environ):
+    errors = load_config(project).get_validation_errors()
+    assert any(".pair-programmer/.env" in e for e in errors)
