@@ -83,6 +83,11 @@ class ShellTool(Tool):
             signal_process_group(process)
             await process.wait()
             return ToolResult.error_result(f"Command '{cmd}' timed out after {params.timeout} seconds")
+        except asyncio.CancelledError:
+            # The user stopped the turn (Ctrl-C). Stop the command too: it runs in its own process group,
+            # so it would otherwise keep running.
+            signal_process_group(process)
+            raise
 
         stdout_str = stdout.decode("utf-8", errors="replace") if stdout else ""
         stderr_str = stderr.decode("utf-8", errors="replace") if stderr else ""

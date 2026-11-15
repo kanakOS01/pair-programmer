@@ -1,4 +1,5 @@
 import asyncio
+import signal
 import sys
 from contextlib import AsyncExitStack, nullcontext
 from functools import wraps
@@ -85,7 +86,7 @@ class CLI:
                 except FileNotFoundError:
                     self.tui.error(f"Session '{session_id}' not found.")
                     return None
-            return await self._process_message(prompt)
+            return await self._run_turn(prompt)
 
     async def _run_interactive(self, session_id: str | None = None):
         async with AsyncExitStack() as stack:
@@ -121,7 +122,7 @@ class CLI:
                         if should_exit:
                             break
                     else:
-                        await self._process_message(inp)
+                        await self._run_turn(inp)
 
                 except KeyboardInterrupt:
                     console.print("\n[dim]Use /exit to exit standard mode.[/dim]")
@@ -129,6 +130,31 @@ class CLI:
                     break
 
         return None
+
+    async def _run_turn(self, message: str) -> str | None:
+        """Run one turn. Ctrl-C stops the turn and returns to the prompt; it does not exit pp."""
+        task = asyncio.create_task(self._process_message(message))
+        loop = asyncio.get_running_loop()
+        try:
+            loop.add_signal_handler(signal.SIGINT, task.cancel)
+        except NotImplementedError:
+            pass  # Windows: no signal handlers on the event loop. Ctrl-C raises KeyboardInterrupt there.
+
+        try:
+            return await task
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                raise  # pp itself is being cancelled, not only this turn.
+            self.tui.stop_live_displays()
+            self.tui.console.print("\n[warning]Interrupted.[/warning] [dim]Type a new message, or /exit to quit.[/dim]")
+            return None
+        finally:
+            try:
+                # Restores the default handler, which raises KeyboardInterrupt at the prompt.
+                loop.remove_signal_handler(signal.SIGINT)
+            except NotImplementedError:
+                pass
 
     async def _process_message(self, message: str) -> str | None:
         if not self.coding_agent:
@@ -519,9 +545,17 @@ class CLI:
             return False
 
 
+def _raise_keyboard_interrupt(signum: int, frame: Any) -> None:
+    raise KeyboardInterrupt
+
+
 def coro(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
+        # asyncio.run() installs its own Ctrl-C handler, which cancels the whole program at the next await.
+        # A different handler stops it from doing that. pp handles Ctrl-C itself: at the prompt it raises
+        # KeyboardInterrupt, and during a turn _run_turn() stops only that turn.
+        signal.signal(signal.SIGINT, _raise_keyboard_interrupt)
         return asyncio.run(f(*args, **kwargs))
 
     return wrapper

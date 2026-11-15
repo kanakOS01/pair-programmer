@@ -97,7 +97,12 @@ class HookSystem:
 
             # Wait for execution with timeout
             try:
-                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=hook.timeout)
+                try:
+                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=hook.timeout)
+                except asyncio.CancelledError:
+                    # The user stopped the turn. Stop the hook too: it runs in its own process group.
+                    signal_process_group(proc)
+                    raise
                 exit_code = proc.returncode
 
                 if exit_code != 0:
