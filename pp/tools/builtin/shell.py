@@ -1,13 +1,15 @@
 import asyncio
 import fnmatch
 import os
+import re
+import signal
 import sys
 
 from pydantic import BaseModel, Field
 
 from pp.domain import ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
-from pp.utils.paths import resolve_path
+from pp.utils.paths import resolve_path_safe
 
 
 class ShellToolParams(BaseModel):
@@ -23,36 +25,34 @@ class ShellTool(Tool):
     schema = ShellToolParams
 
     MAX_OUTPUT_SIZE_BYTES = 1024 * 100  # 100 kb
-    BLOCKED_COMMANDS = {
-        "rm -rf /",
-        "rm -rf ~",
-        "rm -rf /*",
-        "dd if=/dev/zero",
-        "dd if=/dev/random",
-        "mkfs",
-        "fdisk",
-        "parted",
-        ":(){ :|:& };:",
-        "chmod 777 /",
-        "chmod -R 777",
-        "shutdown",
-        "reboot",
-        "halt",
-        "poweroff",
-        "init 0",
-        "init 6",
-    }
+    # Best-effort blocklist. It does not replace the approval policy.
+    # The patterns run on the command after quotes are removed and whitespace is collapsed.
+    BLOCKED_PATTERNS = [
+        re.compile(r"\brm\s+(-\S+\s+)*(/|/\*|~|~/|~/\*|\$HOME/?)(\s|$|[;&|])"),
+        re.compile(r"\bdd\b.*\bif=/dev/(zero|random|urandom)\b"),
+        re.compile(r"\bdd\b.*\bof=/dev/(sd|hd|nvme|disk)"),
+        re.compile(r"\bmkfs(\.\w+)?\b"),
+        re.compile(r"\b(fdisk|parted|diskutil\s+erase\w*)\b"),
+        re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:"),
+        re.compile(r"\bchmod\s+(-\S+\s+)*777\s+/(\s|$)"),
+        re.compile(r"\bchmod\s+-R\s+777\b"),
+        re.compile(r"\b(shutdown|reboot|halt|poweroff)\b"),
+        re.compile(r"\binit\s+[06]\b"),
+    ]
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ShellToolParams(**invocation.params)
 
         cmd = params.command.strip()
 
-        for blocked_cmd in self.BLOCKED_COMMANDS:
-            if blocked_cmd in cmd:
-                return ToolResult.error_result(f"Command '{cmd}' contains blocked command '{blocked_cmd}'")
+        blocked = self._find_blocked_pattern(cmd)
+        if blocked:
+            return ToolResult.error_result(f"Command '{cmd}' matches blocked pattern '{blocked}'")
 
-        cwd = invocation.cwd if params.cwd is None else resolve_path(invocation.cwd, params.cwd)
+        try:
+            cwd = invocation.cwd if params.cwd is None else resolve_path_safe(invocation.cwd, params.cwd)
+        except ValueError as e:
+            return ToolResult.error_result(str(e))
         if not cwd.exists():
             return ToolResult.error_result(f"Working directory '{cwd}' does not exist")
 
@@ -75,7 +75,7 @@ class ShellTool(Tool):
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=params.timeout)
         except asyncio.TimeoutError:
-            process.kill()
+            self._kill_process_group(process)
             await process.wait()
             return ToolResult.error_result(f"Command '{cmd}' timed out after {params.timeout} seconds")
 
@@ -88,16 +88,36 @@ class ShellTool(Tool):
         if stderr_str:
             output += f"\n[STDERR]\n{stderr_str.rstrip()}\n"
 
+        truncated = len(output) > self.MAX_OUTPUT_SIZE_BYTES
+        if truncated:
+            output = output[: self.MAX_OUTPUT_SIZE_BYTES] + "\n... [truncated]"
+
         if process.returncode != 0:
             return ToolResult.error_result(
                 f"Command '{cmd}' failed with exit code {process.returncode}\n{output}",
                 exit_code=process.returncode,
+                truncated=truncated,
             )
 
-        if len(output) > self.MAX_OUTPUT_SIZE_BYTES:
-            output = output[: self.MAX_OUTPUT_SIZE_BYTES] + "\n... [truncated]"
+        return ToolResult.success_result(output=output, exit_code=process.returncode, truncated=truncated)
 
-        return ToolResult.success_result(output=output, exit_code=process.returncode)
+    def _find_blocked_pattern(self, cmd: str) -> str | None:
+        normalized = " ".join(cmd.replace('"', "").replace("'", "").replace("\\", "").split())
+        for pattern in self.BLOCKED_PATTERNS:
+            if pattern.search(normalized):
+                return pattern.pattern
+        return None
+
+    @staticmethod
+    def _kill_process_group(process: asyncio.subprocess.Process) -> None:
+        # The process starts a new session, so kill the whole group. This also stops child processes.
+        try:
+            if sys.platform == "win32":
+                process.kill()
+            else:
+                os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
     def _build_environment(self) -> dict[str, str]:
         env = os.environ.copy()

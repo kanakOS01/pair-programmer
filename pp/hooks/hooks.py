@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class HookSystem:
+    # The OS limits the size of the environment (E2BIG). A large tool result can exceed that limit.
+    MAX_ENV_VALUE_CHARS = 16_000
+
     def __init__(self, config: Config):
         self.config = config
 
@@ -34,7 +37,10 @@ class HookSystem:
             for k, v in context.items():
                 # Prefix environment variables to avoid collisions and make it clear
                 # e.g., if context has key 'agent_prompt', we set 'PP_AGENT_PROMPT'
-                env[f"PP_{k.upper()}"] = str(v)
+                value = str(v)
+                if len(value) > self.MAX_ENV_VALUE_CHARS:
+                    value = value[: self.MAX_ENV_VALUE_CHARS] + "\n... [truncated]"
+                env[f"PP_{k.upper()}"] = value
 
         for hook in hooks_to_run:
             env["PP_HOOK_NAME"] = hook.name

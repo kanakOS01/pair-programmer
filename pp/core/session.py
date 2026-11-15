@@ -1,4 +1,5 @@
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -9,6 +10,7 @@ from pp.domain import Message, TokenUsage
 from pp.hooks import HookSystem
 from pp.llm import OpenRouterLLM
 from pp.safety.approval import ApprovalManager
+from pp.tools.base import Tool
 from pp.tools.mcp.manager import MCPManager
 from pp.tools.registry import create_default_registry
 from pp.utils.paths import get_data_dir
@@ -23,6 +25,7 @@ class Session:
         self.tool_registry = create_default_registry(config)
         self.tool_registry.session = self
         self.mcp_manager = MCPManager(config)
+        self.mcp_tools: list[Tool] = []
         self.approval_manager = ApprovalManager(config)
         self.context_manager = ContextManager(
             config=config,
@@ -43,10 +46,23 @@ class Session:
 
     async def initialize(self) -> None:
         await self.mcp_manager.initialize()
-        mcp_tools = await self.mcp_manager.get_tools()
-        for tool in mcp_tools:
-            self.tool_registry.register(tool)
+        self.mcp_tools = list(await self.mcp_manager.get_tools())
+        self._register_mcp_tools()
         self.context_manager.update_system_prompt(self.tool_registry.list_tools())
+
+    def rebuild_tool_registry(self) -> None:
+        """Rebuild the registry from the current config. Keep the MCP tools and the session references."""
+        self.tool_registry = create_default_registry(self.config)
+        self.tool_registry.session = self
+        for tool in self.tool_registry.list_tools():
+            tool.session = self
+        self._register_mcp_tools()
+        self.context_manager.update_system_prompt(self.tool_registry.list_tools())
+
+    def _register_mcp_tools(self) -> None:
+        for tool in self.mcp_tools:
+            if self.config.allowed_tools is None or tool.name in self.config.allowed_tools:
+                self.tool_registry.register(tool)
 
     def increment_turn(self) -> int:
         self._turn_count += 1
@@ -90,8 +106,11 @@ class Session:
             "messages": serialized_messages,
         }
 
+        # Write to a temporary file, then rename, so that a crash cannot leave a corrupt session file.
         path = sessions_dir / f"{self.session_id}.json"
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        tmp_path = path.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp_path, path)
 
     def load(self, session_id: str) -> None:
         sessions_dir = get_data_dir() / "sessions"

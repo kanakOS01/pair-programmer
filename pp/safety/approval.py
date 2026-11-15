@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -33,14 +34,53 @@ class ApprovalContext:
     tool_type: str | None = None
 
 
-def _is_path_safe(path: Path, safe_paths: list[str]) -> bool:
+DANGEROUS_COMMANDS = {
+    "rm",
+    "rmdir",
+    "sudo",
+    "su",
+    "mv",
+    "chmod",
+    "chown",
+    "dd",
+    "mkfs",
+    "shutdown",
+    "reboot",
+    "kill",
+    "pkill",
+    "killall",
+    "truncate",
+    "shred",
+}
+
+# A word in a shell command: a run of characters that are not whitespace, quotes or shell operators.
+_COMMAND_WORD = re.compile(r"[^\s;&|()<>`'\"$]+")
+
+
+def _is_dangerous_command(command: str) -> bool:
+    """Return True if any word in the command is a dangerous command name.
+
+    Every word is checked, not only the first one, so "cd x && rm -rf ." and
+    "bash -c 'rm -rf .'" are also found. A false positive only asks for confirmation.
+    """
+    for word in _COMMAND_WORD.findall(command):
+        if Path(word).name in DANGEROUS_COMMANDS:
+            return True
+    return False
+
+
+def _resolve(path: Path | str, base: Path) -> Path:
     try:
-        resolved = Path(path).resolve()
+        return (base / Path(path).expanduser()).resolve()
     except Exception:
-        resolved = Path(path)
+        return base / Path(path)
+
+
+def _is_path_safe(path: Path, safe_paths: list[str], base: Path) -> bool:
+    resolved = _resolve(path, base)
     for safe in safe_paths:
         try:
-            safe_p = Path(safe).resolve()
+            safe_p = _resolve(safe, base)
             if resolved == safe_p or safe_p in resolved.parents:
                 return True
         except Exception:
@@ -67,7 +107,7 @@ class ApprovalChecker:
         # 2. Check if paths are all safe
         paths_safe = False
         if self.config.approval.safe_paths and context.affected_paths:
-            if all(_is_path_safe(p, self.config.approval.safe_paths) for p in context.affected_paths):
+            if all(_is_path_safe(p, self.config.approval.safe_paths, self.config.cwd) for p in context.affected_paths):
                 paths_safe = True
 
         # 3. Check if context is flagged as danger
@@ -133,12 +173,7 @@ class ApprovalManager:
                             affected_paths.append(Path(item))
 
         # Check for dangerous command tokens
-        is_danger = False
-        if command:
-            dangerous_cmds = ["rm", "sudo", "mv", "chmod", "chown", "dd", "mkfs", "shutdown", "reboot"]
-            cmd_parts = str(command).split()
-            if cmd_parts and cmd_parts[0] in dangerous_cmds:
-                is_danger = True
+        is_danger = bool(command) and _is_dangerous_command(str(command))
 
         return ApprovalContext(
             tool_name=tool.name,

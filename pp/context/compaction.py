@@ -47,11 +47,14 @@ class CompactionLayer:
             # Not enough messages to compact
             return "", TokenUsage()
 
-        # Identify messages to summarize
-        messages_to_summarize = current_messages[:-keep_last_n] if keep_last_n > 0 else current_messages
-        k = len(messages_to_summarize)
+        # Identify messages to summarize. Move the split point back until the kept messages
+        # do not start with a tool result, because its assistant tool call would be summarized.
+        k = len(current_messages) - keep_last_n
+        while 0 < k < len(current_messages) and current_messages[k].role == "tool":
+            k -= 1
         if k == 0:
             return "", TokenUsage()
+        messages_to_summarize = current_messages[:k]
 
         # Format messages to summarize
         history_text = self._format_messages_for_summary(messages_to_summarize)

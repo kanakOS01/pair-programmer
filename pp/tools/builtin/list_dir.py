@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 from pp.domain import ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
-from pp.utils.paths import resolve_path
+from pp.utils.paths import resolve_path_safe
 
 
 class ListDirParams(BaseModel):
@@ -19,7 +19,10 @@ class ListDirTool(Tool):
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ListDirParams(**invocation.params)
-        path = resolve_path(invocation.cwd, params.path)
+        try:
+            path = resolve_path_safe(invocation.cwd, params.path)
+        except ValueError as e:
+            return ToolResult.error_result(str(e))
 
         if not path.exists() or not path.is_dir():
             return ToolResult.error_result(f"Path is not a directory: {path}")

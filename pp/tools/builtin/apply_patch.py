@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from pp.domain import FileDiff, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
-from pp.utils.paths import resolve_path
+from pp.utils.paths import resolve_path_safe
 
 
 class PatchChunk(BaseModel):
@@ -33,7 +33,10 @@ class ApplyPatchTool(Tool):
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ApplyPatchParams(**invocation.params)
-        path = resolve_path(invocation.cwd, params.path)
+        try:
+            path = resolve_path_safe(invocation.cwd, params.path)
+        except ValueError as e:
+            return ToolResult.error_result(str(e))
 
         if not path.exists():
             return ToolResult.error_result(f"{path} file does not exist. Use write_file tool instead for new files.")

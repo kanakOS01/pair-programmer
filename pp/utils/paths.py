@@ -22,13 +22,12 @@ def is_binary_file(path: str | Path) -> bool:
 
 
 def resolve_path_safe(base: str | Path, path: str | Path) -> Path:
-    base = Path(base).resolve()
-    path = Path(path)
+    """Resolve path against base. Raise ValueError if the result is outside base.
 
-    if path.is_absolute():
-        resolved = path.resolve()
-    else:
-        resolved = base / path
+    The path is fully resolved, so "../" parts and symlinks cannot escape base.
+    """
+    base = Path(base).resolve()
+    resolved = (base / Path(path).expanduser()).resolve()
 
     try:
         resolved.relative_to(base)

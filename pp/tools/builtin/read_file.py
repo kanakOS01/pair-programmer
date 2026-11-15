@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 from pp.domain import ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
-from pp.utils.paths import is_binary_file, resolve_path
+from pp.utils.paths import is_binary_file, resolve_path_safe
 from pp.utils.text import count_tokens, truncate_text
 
 
@@ -28,7 +28,10 @@ class ReadFileTool(Tool):
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ReadFileParams(**invocation.params)
-        path = resolve_path(invocation.cwd, params.path)
+        try:
+            path = resolve_path_safe(invocation.cwd, params.path)
+        except ValueError as e:
+            return ToolResult.error_result(str(e))
 
         if not path.exists():
             return ToolResult.error_result(f"File not found: {path}")

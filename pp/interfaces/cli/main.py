@@ -109,6 +109,7 @@ class CLI:
             return None
 
         assistant_streaming = False
+        final_response: str | None = None
 
         async for event in self.coding_agent.run(message):
             if event.type == AgentEventType.TextDelta:
@@ -120,12 +121,14 @@ class CLI:
                 self.tui.stream_delta(content)
 
             elif event.type == AgentEventType.TextComplete:
+                # Do not return here: the same turn can also contain tool calls.
                 final_response = event.data.get("content", "")
                 if assistant_streaming:
                     self.tui.stream_end()
                     assistant_streaming = False
 
-                return final_response
+            elif event.type == AgentEventType.Done:
+                final_response = event.data.get("response") or final_response
 
             elif event.type == AgentEventType.Error:
                 error = event.data.get("error", "Unkown error")
@@ -157,6 +160,11 @@ class CLI:
                     exit_code=event.data.get("exit_code"),
                     meta=event.data.get("metadata", None),
                 )
+
+        if assistant_streaming:
+            self.tui.stream_end()
+
+        return final_response
 
     async def _handle_command(self, inp: str) -> bool:
         """Handles a slash command. Returns True if the CLI loop should exit."""
@@ -206,70 +214,17 @@ class CLI:
                 self.tui.show_command_error(f"Session '{session_id}' not found.")
 
     async def _handle_resume_interactive(self):
-        from pp.core.session import get_sessions
-
-        all_sessions = get_sessions()
-        if not all_sessions:
-            self.tui.show_command_error("No saved sessions found.")
+        session_id = await self.select_session()
+        if not session_id:
             return
 
-        current_page = 0
-        page_size = 5
+        try:
+            self.coding_agent.session.load(session_id)
+            console.print(f"[success]Resumed session {session_id}[/success]")
+        except FileNotFoundError:
+            self.tui.show_command_error(f"Session '{session_id}' not found.")
 
-        while True:
-            total_pages = (len(all_sessions) + page_size - 1) // page_size
-            start_idx = current_page * page_size
-            end_idx = start_idx + page_size
-            page_sessions = all_sessions[start_idx:end_idx]
-
-            self.tui.show_sessions(page_sessions, current_page, total_pages)
-
-            prompt_lines = []
-            if current_page + 1 < total_pages:
-                prompt_lines.append("[bold]n[/bold] for Next page")
-            if current_page > 0:
-                prompt_lines.append("[bold]p[/bold] for Previous page")
-            prompt_lines.append("number [bold]1-5[/bold] to resume a session")
-            prompt_lines.append("Session ID to resume")
-            prompt_lines.append("press [bold]Enter[/bold] to cancel")
-
-            console.print(f"Options: {', '.join(prompt_lines)}")
-
-            try:
-                inp = console.input("\nChoose option: ").strip()
-                if not inp:
-                    break
-
-                if inp.lower() in ("n", "next") and current_page + 1 < total_pages:
-                    current_page += 1
-                    continue
-                elif inp.lower() in ("p", "prev") and current_page > 0:
-                    current_page -= 1
-                    continue
-
-                if inp.isdigit():
-                    idx = int(inp) - 1
-                    if 0 <= idx < len(page_sessions):
-                        selected_session = page_sessions[idx]
-                        session_id = selected_session["session_id"]
-                        self.coding_agent.session.load(session_id)
-                        console.print(f"[success]Resumed session {session_id}[/success]")
-                        break
-                    else:
-                        console.print("[error]Invalid index selected.[/error]")
-                        continue
-
-                try:
-                    self.coding_agent.session.load(inp)
-                    console.print(f"[success]Resumed session {inp}[/success]")
-                    break
-                except FileNotFoundError:
-                    console.print(f"[error]Session '{inp}' not found. Please try again.[/error]")
-
-            except (KeyboardInterrupt, EOFError):
-                break
-
-    async def select_session_startup(self) -> str | None:
+    async def select_session(self) -> str | None:
         from pp.core.session import get_sessions
 
         all_sessions = get_sessions()
@@ -400,7 +355,7 @@ class CLI:
                 ("allowed_tools", self.config.allowed_tools, "list[str] | None"),
                 (
                     "approval",
-                    self.config.approval.value if hasattr(self.config.approval, "value") else str(self.config.approval),
+                    self.config.approval.policy.value,
                     "ApprovalPolicy",
                 ),
             ]
@@ -443,7 +398,7 @@ class CLI:
         args = args.strip()
         if not args:
             self.tui.show_approval(
-                self.config.approval.value if hasattr(self.config.approval, "value") else str(self.config.approval),
+                self.config.approval.policy.value,
                 [p.value for p in ApprovalPolicy],
             )
             return
@@ -455,7 +410,7 @@ class CLI:
                 break
 
         if matched:
-            self.config.approval = matched
+            self.config.approval.policy = matched
             self.tui.show_approval_success(matched.value)
             if self.coding_agent:
                 self.coding_agent.session.context_manager.update_system_prompt()
@@ -502,38 +457,27 @@ class CLI:
                 val = int(value_str)
             elif expected_type is float:
                 val = float(value_str)
-            elif expected_type is Path:
+            elif issubclass(expected_type, Path):
                 val = Path(value_str)
             elif key == "allowed_tools":
                 if value_str.lower() in ("none", "null", ""):
                     val = None
                 else:
                     val = [t.strip() for t in value_str.split(",")]
-            elif key == "approval":
+            elif key in ("approval", "approval.policy"):
                 from pp.config.config import ApprovalPolicy
 
-                matched = None
-                for p in ApprovalPolicy:
-                    if p.value.lower() == value_str.lower():
-                        matched = p
-                        break
-                if matched:
-                    val = matched
-                else:
-                    return False
+                # Set the policy field. Do not replace the ApprovalConfig object.
+                obj = self.config.approval
+                attr = "policy"
+                val = ApprovalPolicy(value_str.lower())
             else:
                 val = value_str
 
             setattr(obj, attr, val)
 
-            if key == "allowed_tools":
-                if self.coding_agent:
-                    from pp.tools.registry import create_default_registry
-
-                    self.coding_agent.session.tool_registry = create_default_registry(self.config)
-                    self.coding_agent.session.context_manager.update_system_prompt(
-                        self.coding_agent.session.tool_registry.list_tools()
-                    )
+            if key == "allowed_tools" and self.coding_agent:
+                self.coding_agent.session.rebuild_tool_registry()
 
             return True
         except Exception as e:
@@ -592,7 +536,7 @@ async def main(
     if resume is not None:
         session_id = resume.strip()
         if not session_id or session_id.lower() == "list":
-            session_id = await cli.select_session_startup()
+            session_id = await cli.select_session()
             if not session_id:
                 sys.exit(0)
 

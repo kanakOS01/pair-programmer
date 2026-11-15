@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 from pp.domain import FileDiff, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
-from pp.utils.paths import create_parent_dir, resolve_path
+from pp.utils.paths import create_parent_dir, resolve_path_safe
 
 
 class EditFileParams(BaseModel):
@@ -33,7 +33,10 @@ class EditFileTool(Tool):
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = EditFileParams(**invocation.params)
-        path = resolve_path(invocation.cwd, params.path)
+        try:
+            path = resolve_path_safe(invocation.cwd, params.path)
+        except ValueError as e:
+            return ToolResult.error_result(str(e))
 
         if not path.exists():
             if params.old_str:

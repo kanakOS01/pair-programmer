@@ -23,17 +23,3 @@ class Message:
             res["content"] = self.content
 
         return res
-
-
-@dataclass
-class ToolResultMessage:
-    call_id: str
-    content: str
-    is_error: bool = False
-
-    def to_openai_message(self) -> dict[str, Any]:
-        return {
-            "role": "tool",
-            "call_id": self.call_id,
-            "content": self.content,
-        }

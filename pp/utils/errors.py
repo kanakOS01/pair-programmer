@@ -39,7 +39,7 @@ class ConfigError(AgentError):
         config_file: str | None = None,
         **kwargs: Any,
     ) -> None:
-        details = kwargs.pop("details") or {}
+        details = kwargs.pop("details", None) or {}
         if config_key:
             details["config_key"] = config_key
         if config_file:

@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 from pp.domain import FileDiff, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
-from pp.utils.paths import create_parent_dir, resolve_path
+from pp.utils.paths import create_parent_dir, resolve_path_safe
 
 
 class WriteFileParams(BaseModel):
@@ -23,7 +23,10 @@ class WriteFileTool(Tool):
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = WriteFileParams(**invocation.params)
-        path = resolve_path(invocation.cwd, params.path)
+        try:
+            path = resolve_path_safe(invocation.cwd, params.path)
+        except ValueError as e:
+            return ToolResult.error_result(str(e))
 
         is_new_file = not path.exists()
 

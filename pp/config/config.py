@@ -30,7 +30,7 @@ class ApprovalPolicy(str, Enum):
 
 
 class ApprovalConfig(BaseModel):
-    policy: ApprovalPolicy = ApprovalPolicy.AUTO
+    policy: ApprovalPolicy = ApprovalPolicy.AUTO_EDIT
     safe_tools: list[str] = Field(default_factory=list)
     requires_approval_tools: list[str] = Field(default_factory=list)
     requires_approval_types: list[str] = Field(default_factory=list)
@@ -105,7 +105,9 @@ class Config(BaseModel):
     shell_env_policy: ShellEnvironmentPolicy = Field(default_factory=ShellEnvironmentPolicy)
 
     max_turns: int = 100
-    retries: int = 3
+    retries: int = Field(default=3, ge=1)
+    # Compact the history automatically when it uses more than this part of model.context_window.
+    compaction_threshold: float = Field(default=0.8, gt=0.0, le=1.0)
 
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 

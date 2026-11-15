@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, AsyncGenerator, override
 
-from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
+from openai import APIConnectionError, APIError, APIStatusError, AsyncOpenAI, RateLimitError
 
 from pp.config import Config
 from pp.domain import LLMEvent, LLMEventType, TextDelta, TokenUsage, ToolCall, ToolCallDelta
@@ -40,44 +40,57 @@ class OpenRouterLLM(BaseLLM):
         kwargs = {
             "model": self.cfg.model_name,
             "messages": messages,
+            "temperature": self.cfg.temperature,
         }
 
         if tools:
             kwargs["tools"] = self._build_tools(tools)
             kwargs["tool_choice"] = "auto"
 
-        for attempt in range(self._retries):
+        retries = max(1, self._retries)
+        for attempt in range(retries):
+            # If an event was already sent to the caller, a retry would send the same text again.
+            yielded = False
             try:
                 if stream:
                     async for event in self._generate_stream(client, kwargs):
+                        yielded = True
                         yield event
                 else:
                     yield await self._generate_non_stream(client, kwargs)
 
                 return
 
-            except RateLimitError as rle:
-                if attempt == self._retries - 1:
-                    yield LLMEvent.stream_error(error=f"Rate limit exceeded. {rle}")
+            except APIError as e:
+                if yielded or attempt == retries - 1 or not self._is_retryable(e):
+                    yield LLMEvent.stream_error(error=self._error_message(e))
                     return
                 await asyncio.sleep(2**attempt)
 
-            except APIConnectionError as ace:
-                if attempt == self._retries - 1:
-                    yield LLMEvent.stream_error(error=f"API connection error. {ace}")
-                    return
-                await asyncio.sleep(2**attempt)
+    @staticmethod
+    def _is_retryable(error: APIError) -> bool:
+        if isinstance(error, (RateLimitError, APIConnectionError)):
+            return True
+        if isinstance(error, APIStatusError):
+            # A 4xx error (bad request, auth, not found) does not change on a retry.
+            return error.status_code >= 500 or error.status_code in (408, 409)
+        return False
 
-            except APIError as ae:
-                if attempt == self._retries - 1:
-                    yield LLMEvent.stream_error(error=f"Error decoding response. {ae}")
-                    return
-                await asyncio.sleep(2**attempt)
+    @staticmethod
+    def _error_message(error: APIError) -> str:
+        if isinstance(error, RateLimitError):
+            return f"Rate limit exceeded. {error}"
+        if isinstance(error, APIConnectionError):
+            return f"API connection error. {error}"
+        if isinstance(error, APIStatusError):
+            return f"API error (HTTP {error.status_code}). {error}"
+        return f"Error decoding response. {error}"
 
     async def _generate_stream(self, client: AsyncOpenAI, kwargs: dict[str, Any]) -> AsyncGenerator[LLMEvent, None]:
         params = {
             "model": kwargs["model"],
             "messages": kwargs["messages"],
+            "temperature": kwargs["temperature"],
             "stream": True,
         }
         if "tools" in kwargs:
@@ -166,6 +179,7 @@ class OpenRouterLLM(BaseLLM):
         params = {
             "model": kwargs["model"],
             "messages": kwargs["messages"],
+            "temperature": kwargs["temperature"],
             "stream": False,
         }
         if "tools" in kwargs:

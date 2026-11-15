@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import AsyncGenerator
 
 from pp.agents import BaseAgent
 from pp.config import Config
+from pp.context.compaction import CompactionLayer
 from pp.core.session import Session
 from pp.domain import AgentEvent, AgentEventType, LLMEventType, TokenUsage, ToolCall
-from pp.domain.message import ToolResultMessage
+
+logger = logging.getLogger(__name__)
 
 
 class CodingAgent(BaseAgent):
@@ -56,6 +59,9 @@ class CodingAgent(BaseAgent):
         """
         for _ in range(self.session.config.max_turns):
             _ = self.session.increment_turn()
+
+            if self.session.context_manager.needs_compaction():
+                await self._compact()
 
             response_text = ""
 
@@ -107,7 +113,7 @@ class CodingAgent(BaseAgent):
             if not tool_calls:
                 break
 
-            tool_call_results: list[ToolResultMessage] = []
+            tool_call_results: list[tuple[str, str]] = []
             for tool_call in tool_calls:
                 yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
 
@@ -138,14 +144,18 @@ class CodingAgent(BaseAgent):
 
                 yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
 
-                tool_call_results.append(
-                    ToolResultMessage(
-                        call_id=tool_call.call_id,
-                        content=result.to_model_output(),
-                        is_error=not result.ok,
-                    )
-                )
+                tool_call_results.append((tool_call.call_id, result.to_model_output()))
 
-            for tr in tool_call_results:
-                self.session.context_manager.add_tool_result_message(tr.call_id, tr.content)
+            for call_id, content in tool_call_results:
+                self.session.context_manager.add_tool_result_message(call_id, content)
             self.session.save()
+
+    async def _compact(self) -> None:
+        try:
+            _, usage = await CompactionLayer(self.session.context_manager, self.session.llm).compact()
+        except Exception:
+            # A failed compaction must not stop the run. The next LLM call can still succeed.
+            logger.exception("Automatic compaction failed")
+            return
+        self.session.accumulate_usage(usage)
+        self.session.save()

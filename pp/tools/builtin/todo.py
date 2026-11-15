@@ -61,9 +61,9 @@ class TodoTool(Tool):
             self._todos[params.id]["status"] = "done"
             return ToolResult.success_result(f"Todo done [{params.id}]")
 
-        elif params.action == "list":
+        elif params.action.lower() == TodoAction.LIST:
             if not self._todos:
-                return ToolResult.success_result("No todos found", meta={"todos": []})
+                return ToolResult.success_result("No todos found", metadata={"todos": []})
 
             todos_meta = []
             todos = []
@@ -72,9 +72,9 @@ class TodoTool(Tool):
                 todos_meta.append({"id": tid, "status": todo["status"], "message": todo["message"]})
 
             output = "Todos:" + "\n" + "\n".join(todos)
-            return ToolResult.success_result(output, meta={"todos": todos_meta})
+            return ToolResult.success_result(output, metadata={"todos": todos_meta})
 
-        elif params.action == "clear":
+        elif params.action.lower() == TodoAction.CLEAR:
             cnt = len(self._todos)
             self._todos.clear()
             return ToolResult.success_result(f"{cnt} todos cleared successfully")

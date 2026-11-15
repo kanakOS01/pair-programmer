@@ -1,6 +1,9 @@
+from functools import lru_cache
+
 import tiktoken
 
 
+@lru_cache(maxsize=None)
 def get_tokenizer(model: str) -> tiktoken.Encoding:
     try:
         return tiktoken.encoding_for_model(model)
