@@ -10,7 +10,7 @@ from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_v
 
 class ModelConfig(BaseModel):
     name: str = "openai/gpt-oss-120b:free"
-    temp: float = Field(default=1, ge=0.0, le=2.0)
+    temp: float = Field(default=1.0, ge=0.0, le=2.0)
     context_window: int = Field(256_000)
 
 

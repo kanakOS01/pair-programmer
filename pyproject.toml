@@ -20,6 +20,8 @@ pp = "pp.interfaces.cli.main:app"
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.15.4",
 ]
 
@@ -36,6 +38,10 @@ ignore = ["F841", "F403", "E402", "B026", "F405", "E101", "B008", "B905", "B006"
 quote-style = "double"
 indent-style = "space"
 
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.uv]
 exclude-newer = "30 days"
