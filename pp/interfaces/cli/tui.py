@@ -7,8 +7,10 @@ from rich import box
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.markdown import Markdown
+from rich.markup import escape
 from rich.panel import Panel
 from rich.rule import Rule
+from rich.status import Status
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
@@ -130,6 +132,22 @@ class TUI:
         )
         self.console.print(panel)
 
+    def mcp_starting(self, server_names: list[str]) -> Status:
+        """A spinner to show while MCP servers start. Use it as a context manager."""
+        return self.console.status(f"[info]Starting MCP servers: {', '.join(server_names)}[/info]", spinner="dots")
+
+    def show_mcp_errors(self, errors: dict[str, str]) -> None:
+        for name, error in errors.items():
+            self.console.print(
+                Panel(
+                    Text(f"{error}\n\nThe session continues without the tools of this server. Run /mcp to see the status."),
+                    title=Text(f"MCP server '{name}' did not start", style="warning"),
+                    title_align="left",
+                    border_style="warning",
+                    box=box.ROUNDED,
+                )
+            )
+
     def show_mcp_servers(self, servers_data: list[dict[str, Any]]) -> None:
         if not servers_data:
             self.console.print("[warning]No MCP servers configured.[/warning]")
@@ -143,7 +161,12 @@ class TUI:
 
         for server in servers_data:
             name = server["name"]
-            status = "[success]Connected[/success]" if server["connected"] else "[error]Disconnected[/error]"
+            if server["connected"]:
+                status = "[success]Connected[/success]"
+            elif server.get("error"):
+                status = f"[error]Failed[/error]\n[dim]{escape(server['error'])}[/dim]"
+            else:
+                status = "[error]Disconnected[/error]"
             command = server["command"]
             tools_list = server["tools"]
 

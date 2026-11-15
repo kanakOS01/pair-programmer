@@ -1,5 +1,6 @@
 import asyncio
 import sys
+from contextlib import AsyncExitStack, nullcontext
 from functools import wraps
 from pathlib import Path
 from typing import Any, Literal
@@ -49,10 +50,33 @@ class CLI:
         elif run_type == "interactive":
             return await self._run_interactive(session_id=session_id)
 
+    async def _start_agent(self, stack: AsyncExitStack) -> CodingAgent:
+        """Start the agent and its MCP servers. Show a spinner while the servers start, and show any failures."""
+        server_names = list(self.config.mcp_servers)
+        with self.tui.mcp_starting(server_names) if server_names else nullcontext():
+            agent = await stack.enter_async_context(CodingAgent(config=self.config))
+
+        self.coding_agent = agent
+        agent.session.tool_executor.confirm = self._confirm_tool_call
+        return agent
+
+    def _mcp_summary_lines(self) -> list[str]:
+        if not self.coding_agent:
+            return []
+        manager = self.coding_agent.session.mcp_manager
+        lines = []
+        for name, client in manager.clients.items():
+            if client.connected:
+                count = sum(1 for t in self.coding_agent.session.mcp_tools if getattr(t, "client_name", None) == name)
+                lines.append(f"MCP {name}: connected, {count} tools")
+            else:
+                lines.append(f"MCP {name}: failed (see below)")
+        return lines
+
     async def _run_once(self, prompt: str, session_id: str | None = None):
-        async with CodingAgent(config=self.config) as agent:
-            self.coding_agent = agent
-            agent.session.tool_executor.confirm = self._confirm_tool_call
+        async with AsyncExitStack() as stack:
+            agent = await self._start_agent(stack)
+            self.tui.show_mcp_errors(agent.session.mcp_manager.errors)
             if session_id:
                 try:
                     agent.session.load(session_id)
@@ -62,9 +86,8 @@ class CLI:
             return await self._process_message(prompt)
 
     async def _run_interactive(self, session_id: str | None = None):
-        async with CodingAgent(config=self.config) as agent:
-            self.coding_agent = agent
-            agent.session.tool_executor.confirm = self._confirm_tool_call
+        async with AsyncExitStack() as stack:
+            agent = await self._start_agent(stack)
             if session_id:
                 try:
                     agent.session.load(session_id)
@@ -79,9 +102,11 @@ class CLI:
                     f"Model: {self.config.model_name}",
                     f"cwd: {self.config.cwd}",
                     f"Session ID: {agent.session.session_id}",
+                    *self._mcp_summary_lines(),
                     "commands: /help /config /approval /model /mcp /usage /resume /compact /exit",
                 ],
             )
+            self.tui.show_mcp_errors(agent.session.mcp_manager.errors)
 
             while True:
                 try:
@@ -292,7 +317,7 @@ class CLI:
 
         for name, client in mcp_manager.clients.items():
             tools = []
-            if client._connected:
+            if client.connected:
                 for tool in self.coding_agent.session.tool_registry.list_tools():
                     if hasattr(tool, "client_name") and tool.client_name == name:
                         tools.append(tool.name)
@@ -300,9 +325,10 @@ class CLI:
             servers_data.append(
                 {
                     "name": name,
-                    "connected": client._connected,
+                    "connected": client.connected,
                     "command": f"{client.command} {' '.join(client.args)}",
                     "tools": tools,
+                    "error": mcp_manager.errors.get(name),
                 }
             )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -16,6 +17,8 @@ class MCPManager:
     def __init__(self, config: Config) -> None:
         self.config = config
         self.clients: dict[str, MCPClient] = {}
+        # Why each server that failed to start did not start, by server name.
+        self.errors: dict[str, str] = {}
         for server_name, server_cfg in config.mcp_servers.items():
             self.clients[server_name] = MCPClient(
                 name=server_name,
@@ -25,18 +28,31 @@ class MCPManager:
             )
 
     async def initialize(self) -> None:
-        """Connect all configured MCP servers asynchronously."""
-        for client in self.clients.values():
-            try:
-                await client.connect()
-            except Exception as e:
-                logger.error(f"Failed to connect to MCP server '{client.name}': {e}")
+        """Connect all configured MCP servers at the same time. A server that fails is recorded in self.errors."""
+        self.errors.clear()
+        await asyncio.gather(*(self._connect(name, client) for name, client in self.clients.items()))
+
+    async def _connect(self, name: str, client: MCPClient) -> None:
+        timeout = self.config.mcp_servers[name].startup_timeout
+        try:
+            await client.connect(timeout=timeout)
+        except TimeoutError:
+            self.errors[name] = (
+                f"The server did not answer within {timeout:g} seconds. If it downloads packages when it starts "
+                f"(for example with uvx), set startup_timeout in [mcp_servers.{name}] to wait longer."
+            )
+        except Exception as e:
+            self.errors[name] = str(e)
+        else:
+            return
+        # The CLI shows these errors. Log at debug level only, so they are not printed twice.
+        logger.debug(f"Failed to connect to MCP server '{name}': {self.errors[name]}")
 
     async def get_tools(self) -> list[MCPTool]:
         """Query all connected clients for their tools and wrap them in MCPTool instances."""
         tools = []
         for name, client in self.clients.items():
-            if not client._connected:
+            if not client.connected:
                 continue
 
             try:

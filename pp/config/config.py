@@ -52,6 +52,9 @@ class MCPServerConfig(BaseModel):
     command: str
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
+    # Seconds to wait for the server to answer its first request. Increase it if the server
+    # downloads packages when it starts (for example with uvx).
+    startup_timeout: float = Field(default=15.0, gt=0)
 
 
 class HookConfig(BaseModel):

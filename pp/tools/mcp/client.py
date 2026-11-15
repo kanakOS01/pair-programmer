@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -10,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class MCPClient:
+    STDERR_TAIL_LINES = 10
+
     def __init__(self, name: str, command: str, args: list[str] | None = None, env: dict[str, str] | None = None) -> None:
         self.name = name
         self.command = command
@@ -21,6 +24,8 @@ class MCPClient:
         self._read_task: asyncio.Task | None = None
         self._stderr_task: asyncio.Task | None = None
         self._connected = False
+        # The last stderr lines of the server, to explain why it stopped.
+        self._stderr_tail: collections.deque[str] = collections.deque(maxlen=self.STDERR_TAIL_LINES)
 
     async def connect(self, timeout: float = 15.0) -> None:
         if self._connected:
@@ -66,9 +71,14 @@ class MCPClient:
             self._connected = True
             logger.info(f"Successfully connected and initialized MCP server '{self.name}'.")
         except Exception as e:
-            logger.error(f"MCP server '{self.name}' initialization handshake failed: {e}")
+            # MCPManager logs the failure. Log here at debug level only, so it is not shown twice.
+            logger.debug(f"MCP server '{self.name}' initialization handshake failed: {e}")
             await self.disconnect()
             raise
+
+    @property
+    def connected(self) -> bool:
+        return self._connected
 
     async def disconnect(self) -> None:
         self._connected = False
@@ -222,11 +232,41 @@ class MCPClient:
                     else:
                         logger.debug(f"[MCP {self.name}] Received notification: {method}")
         except asyncio.CancelledError:
-            pass
+            # disconnect() stopped the reader. It fails the pending requests itself.
+            self._connected = False
+            return
         except Exception as e:
             logger.error(f"[MCP {self.name}] Error reading stdout: {e}")
-        finally:
-            self._connected = False
+
+        # stdout closed: the server stopped. Fail the pending requests now, not after their timeout.
+        self._connected = False
+        await self._fail_pending_requests()
+
+    async def _fail_pending_requests(self) -> None:
+        # Give the stderr reader and the process a moment to finish, so that the message is complete.
+        if self._stderr_task:
+            try:
+                await asyncio.wait_for(asyncio.shield(self._stderr_task), timeout=1.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                pass
+
+        exit_code = None
+        if self._process:
+            try:
+                exit_code = await asyncio.wait_for(self._process.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                pass
+
+        message = f"MCP server '{self.name}' stopped"
+        if exit_code is not None:
+            message += f" with exit code {exit_code}"
+        if self._stderr_tail:
+            message += ". Last stderr lines:\n" + "\n".join(self._stderr_tail)
+
+        for future in self._pending_requests.values():
+            if not future.done():
+                future.set_exception(RuntimeError(message))
+        self._pending_requests.clear()
 
     async def _read_stderr(self) -> None:
         try:
@@ -234,7 +274,9 @@ class MCPClient:
                 line = await self._process.stderr.readline()
                 if not line:
                     break
-                logger.debug(f"[MCP {self.name}] stderr: {line.decode('utf-8', errors='replace').rstrip()}")
+                text = line.decode("utf-8", errors="replace").rstrip()
+                self._stderr_tail.append(text)
+                logger.debug(f"[MCP {self.name}] stderr: {text}")
         except asyncio.CancelledError:
             pass
         except Exception as e:
