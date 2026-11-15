@@ -1,8 +1,9 @@
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from pp.domain import ToolInvocation, ToolResult, ToolType
+from pp.domain import ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import resolve_path_safe
 
@@ -17,6 +18,9 @@ class GlobTool(Tool):
     description = "Match file paths using glob patterns"
     type = ToolType.READ
     schema = GlobParams
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        return ToolEffects(paths=(Path(params.get("path", ".")),))
 
     MAX_RESULTS = 200
     DENY_DIRS = {

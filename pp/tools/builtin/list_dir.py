@@ -1,6 +1,9 @@
+from pathlib import Path
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from pp.domain import ToolInvocation, ToolResult, ToolType
+from pp.domain import ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import resolve_path_safe
 
@@ -16,6 +19,9 @@ class ListDirTool(Tool):
     description = "List the contents of a directory"
     type = ToolType.READ
     schema = ListDirParams
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        return ToolEffects(paths=(Path(params.get("path", ".")),))
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ListDirParams(**invocation.params)

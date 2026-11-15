@@ -5,15 +5,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from pp.config import Config
-from pp.context.manager import ContextManager
-from pp.domain import Message, TokenUsage
+from pp.context import ConversationHistory
+from pp.domain import LLMEventType, TokenUsage, UserMessage
 from pp.hooks import HookSystem
 from pp.llm import OpenRouterLLM
-from pp.safety.approval import ApprovalManager
+from pp.prompts.system import get_compaction_prompt, get_system_prompt
 from pp.tools.base import Tool
+from pp.tools.executor import ToolExecutor
 from pp.tools.mcp.manager import MCPManager
 from pp.tools.registry import create_default_registry
 from pp.utils.paths import get_data_dir
+from pp.utils.text import count_tokens
 
 
 class Session:
@@ -26,17 +28,15 @@ class Session:
         self.tool_registry.session = self
         self.mcp_manager = MCPManager(config)
         self.mcp_tools: list[Tool] = []
-        self.approval_manager = ApprovalManager(config)
-        self.context_manager = ContextManager(
-            config=config,
-            user_memory=self._load_memory(),
-            tools=self.tool_registry.list_tools(),
-        )
+        self.user_memory = self._load_memory()
+        self.history = ConversationHistory(count_tokens=self._count_tokens)
         self.session_id = str(uuid.uuid4())
         self.created_at = datetime.now(timezone.utc)
         self.updated_at = datetime.now(timezone.utc)
         self._turn_count = 0
         self.hook_system = HookSystem(config)
+        # The CLI sets tool_executor.confirm. Without it, calls that need confirmation are rejected.
+        self.tool_executor = ToolExecutor(self.tool_registry, config, self.hook_system)
         self.token_usage = TokenUsage()
         self.is_subagent = False
 
@@ -48,7 +48,6 @@ class Session:
         await self.mcp_manager.initialize()
         self.mcp_tools = list(await self.mcp_manager.get_tools())
         self._register_mcp_tools()
-        self.context_manager.update_system_prompt(self.tool_registry.list_tools())
 
     def rebuild_tool_registry(self) -> None:
         """Rebuild the registry from the current config. Keep the MCP tools and the session references."""
@@ -57,12 +56,53 @@ class Session:
         for tool in self.tool_registry.list_tools():
             tool.session = self
         self._register_mcp_tools()
-        self.context_manager.update_system_prompt(self.tool_registry.list_tools())
+        self.tool_executor.registry = self.tool_registry
 
     def _register_mcp_tools(self) -> None:
         for tool in self.mcp_tools:
             if self.config.allowed_tools is None or tool.name in self.config.allowed_tools:
                 self.tool_registry.register(tool)
+
+    def system_prompt(self) -> str:
+        """Build the system prompt from the current config, tools and memory. It is built for each LLM request,
+        so changes to the model, the approval policy or the tool list need no extra step."""
+        return get_system_prompt(self.config, self.user_memory, self.tool_registry.list_tools())
+
+    def needs_compaction(self) -> bool:
+        used = self._count_tokens(self.system_prompt()) + self.history.token_count()
+        return used > self.config.model.context_window * self.config.compaction_threshold
+
+    async def compact(self, keep_last_n: int = 4) -> tuple[str, TokenUsage] | None:
+        """Compact the conversation history. Return the summary and the LLM usage, or None if there was nothing to compact."""
+        usage = TokenUsage()
+
+        async def summarize(text: str) -> str:
+            nonlocal usage
+            summary = ""
+            prompt = f"Please summarize the following conversation history concisely:\n\n{text}"
+            async for event in self.llm.generate(
+                [UserMessage(prompt)], tools=None, system_prompt=get_compaction_prompt(), stream=False
+            ):
+                if event.type == LLMEventType.TextDelta and event.text_delta:
+                    summary += event.text_delta.text
+                elif event.type == LLMEventType.Done:
+                    if event.text_delta and not summary:
+                        summary = event.text_delta.text
+                    if event.usage:
+                        usage = event.usage
+                elif event.type == LLMEventType.Error:
+                    raise RuntimeError(f"LLM compaction failed: {event.error}")
+            return summary
+
+        summary = await self.history.compact(summarize, keep_last_n)
+        if summary is None:
+            return None
+        self.accumulate_usage(usage)
+        self.save()
+        return summary, usage
+
+    def _count_tokens(self, text: str) -> int:
+        return count_tokens(text, self.config.model_name)
 
     def increment_turn(self) -> int:
         self._turn_count += 1
@@ -80,18 +120,6 @@ class Session:
         sessions_dir = get_data_dir() / "sessions"
         sessions_dir.mkdir(parents=True, exist_ok=True)
 
-        serialized_messages = []
-        for msg in self.context_manager._messages:
-            serialized_messages.append(
-                {
-                    "role": msg.role,
-                    "content": msg.content,
-                    "token_count": msg.token_count,
-                    "tool_call_id": msg.tool_call_id,
-                    "tool_calls": msg.tool_calls,
-                }
-            )
-
         data = {
             "session_id": self.session_id,
             "created_at": self.created_at.isoformat(),
@@ -103,7 +131,7 @@ class Session:
                 "total_tokens": self.token_usage.total_tokens,
                 "cached_tokens": self.token_usage.cached_tokens,
             },
-            "messages": serialized_messages,
+            "history": self.history.to_dict(),
         }
 
         # Write to a temporary file, then rename, so that a crash cannot leave a corrupt session file.
@@ -132,17 +160,9 @@ class Session:
             cached_tokens=usage_data.get("cached_tokens", 0),
         )
 
-        messages = []
-        for msg_data in data.get("messages", []):
-            msg = Message(
-                role=msg_data["role"],
-                content=msg_data["content"],
-                token_count=msg_data.get("token_count"),
-                tool_call_id=msg_data.get("tool_call_id"),
-                tool_calls=msg_data.get("tool_calls", []),
-            )
-            messages.append(msg)
-        self.context_manager._messages = messages
+        # Old session files store a "messages" list. ConversationHistory converts it.
+        history_data = data.get("history", data.get("messages", []))
+        self.history = ConversationHistory.from_dict(history_data, count_tokens=self._count_tokens)
 
     def _load_memory(self) -> str | None:
         dir = get_data_dir()
@@ -173,6 +193,8 @@ def get_sessions() -> list[dict[str, Any]]:
         try:
             data = json.loads(file.read_text(encoding="utf-8"))
             if "session_id" in data:
+                history_data = data.get("history", data.get("messages", []))
+                data["preview"] = ConversationHistory.from_dict(history_data, count_tokens=lambda text: 0).last_text()
                 sessions.append(data)
         except Exception:
             pass

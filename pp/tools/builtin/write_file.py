@@ -1,6 +1,9 @@
+from pathlib import Path
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from pp.domain import FileDiff, ToolInvocation, ToolResult, ToolType
+from pp.domain import FileDiff, ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import create_parent_dir, resolve_path_safe
 
@@ -20,6 +23,9 @@ class WriteFileTool(Tool):
     )
     type = ToolType.WRITE
     schema = WriteFileParams
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        return ToolEffects(paths=(Path(params.get("path", ".")),))
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = WriteFileParams(**invocation.params)

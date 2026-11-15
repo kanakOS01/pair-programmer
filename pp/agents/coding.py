@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import AsyncGenerator
 
 from pp.agents import BaseAgent
 from pp.config import Config
-from pp.context.compaction import CompactionLayer
 from pp.core.session import Session
 from pp.domain import AgentEvent, AgentEventType, LLMEventType, TokenUsage, ToolCall
 
@@ -31,7 +29,7 @@ class CodingAgent(BaseAgent):
         yield AgentEvent.agent_start(message=prompt)
         try:
             await self.session.hook_system.run_hooks("before_agent", {"agent_prompt": prompt})
-            self.session.context_manager.add_user_message(prompt)
+            self.session.history.add_user(prompt)
             self.session.save()
 
             final_response = None
@@ -60,7 +58,7 @@ class CodingAgent(BaseAgent):
         for _ in range(self.session.config.max_turns):
             _ = self.session.increment_turn()
 
-            if self.session.context_manager.needs_compaction():
+            if self.session.needs_compaction():
                 await self._compact()
 
             response_text = ""
@@ -71,8 +69,9 @@ class CodingAgent(BaseAgent):
             usage: TokenUsage | None = None
 
             async for event in self.session.llm.generate(
-                messages=self.session.context_manager.get_messages(),
+                self.session.history.entries,
                 tools=tool_schemas,
+                system_prompt=self.session.system_prompt(),
                 stream=True,
             ):
                 if event.type == LLMEventType.TextDelta and event.text_delta:
@@ -94,15 +93,9 @@ class CodingAgent(BaseAgent):
                         tool_calls.extend(event.tool_calls)
                     usage = event.usage
 
-            self.session.context_manager.add_assistant_message(
-                response_text or "",
-                tool_calls=[
-                    {"id": tc.call_id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.args)}}
-                    for tc in tool_calls
-                ]
-                if tool_calls
-                else None,
-            )
+            # An empty turn (for example after an LLM error) is not recorded.
+            if response_text or tool_calls:
+                self.session.history.add_assistant_turn(response_text, tool_calls)
             if usage:
                 self.session.accumulate_usage(usage)
             self.session.save()
@@ -113,49 +106,20 @@ class CodingAgent(BaseAgent):
             if not tool_calls:
                 break
 
-            tool_call_results: list[tuple[str, str]] = []
             for tool_call in tool_calls:
                 yield AgentEvent.tool_call_start(tool_call.call_id, tool_call.name, tool_call.args)
 
-                await self.session.hook_system.run_hooks(
-                    "before_tool",
-                    {
-                        "tool_name": tool_call.name,
-                        "tool_args": json.dumps(tool_call.args),
-                    },
-                )
-
-                result = await self.session.tool_registry.invoke(
-                    tool_call.name,
-                    tool_call.args,
-                    self.session.config.cwd,
-                    approval_manager=self.session.approval_manager,
-                )
-
-                await self.session.hook_system.run_hooks(
-                    "after_tool",
-                    {
-                        "tool_name": tool_call.name,
-                        "tool_args": json.dumps(tool_call.args),
-                        "tool_result": result.to_model_output(),
-                        "tool_success": str(result.ok),
-                    },
-                )
+                result = await self.session.tool_executor.run(tool_call)
 
                 yield AgentEvent.tool_call_excecuted(tool_call.call_id, tool_call.name, result)
 
-                tool_call_results.append((tool_call.call_id, result.to_model_output()))
-
-            for call_id, content in tool_call_results:
-                self.session.context_manager.add_tool_result_message(call_id, content)
-            self.session.save()
+                # Record each result at once. If the run stops later, the finished results are kept.
+                self.session.history.add_tool_result(tool_call.call_id, result.to_model_output())
+                self.session.save()
 
     async def _compact(self) -> None:
         try:
-            _, usage = await CompactionLayer(self.session.context_manager, self.session.llm).compact()
+            await self.session.compact()
         except Exception:
             # A failed compaction must not stop the run. The next LLM call can still succeed.
             logger.exception("Automatic compaction failed")
-            return
-        self.session.accumulate_usage(usage)
-        self.session.save()

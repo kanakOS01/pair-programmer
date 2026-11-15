@@ -8,7 +8,7 @@ from pydantic import BaseModel, ValidationError
 from pydantic.json_schema import model_json_schema
 
 from pp.config.config import Config
-from pp.domain import ToolConfirmation, ToolInvocation, ToolResult, ToolType
+from pp.domain import ToolConfirmation, ToolEffects, ToolInvocation, ToolResult, ToolType
 
 if TYPE_CHECKING:
     from pp.core.session import Session
@@ -46,6 +46,13 @@ class Tool(ABC):
             return [f"Parameter '{'.'.join(str(x) for x in e['loc'])}': {e['msg']}" for e in ve.errors()]
         except Exception as e:
             return [str(e)]
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        """Declare the paths and the shell command that this call will touch. The default is no paths and no command.
+
+        params are already validated against the schema.
+        """
+        return ToolEffects()
 
     def is_mutating(self) -> bool:
         return self.type in (

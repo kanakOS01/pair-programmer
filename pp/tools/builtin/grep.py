@@ -2,10 +2,11 @@ import fnmatch
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from pp.domain import ToolInvocation, ToolResult, ToolType
+from pp.domain import ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import resolve_path_safe
 
@@ -21,6 +22,9 @@ class GrepTool(Tool):
     description = "Search for a regex pattern in file contents. Returns matching lines with file paths and line numbers."
     type = ToolType.READ
     schema = GrepParams
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        return ToolEffects(paths=(Path(params.get("path", ".")),))
 
     MAX_PATTERN_LENGTH = 500
     MAX_RESULTS = 200

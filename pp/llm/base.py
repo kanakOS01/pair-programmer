@@ -1,10 +1,11 @@
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from copy import deepcopy
 from typing import Any, AsyncGenerator
 
 from pp.config import Config
-from pp.domain import LLMEvent
+from pp.domain import Entry, LLMEvent
 
 
 class BaseLLM(ABC):
@@ -21,8 +22,9 @@ class BaseLLM(ABC):
     @abstractmethod
     def generate(
         self,
-        messages: list[dict[str, Any]],
+        entries: Sequence[Entry],
         tools: list[dict[str, Any]] | None,
+        system_prompt: str | None = None,
         stream: bool = True,
     ) -> AsyncGenerator[LLMEvent, None]: ...
 

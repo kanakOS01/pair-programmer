@@ -252,14 +252,8 @@ class TUI:
             token_usage = s.get("token_usage", {})
             total_tokens = token_usage.get("total_tokens", 0)
 
-            messages = s.get("messages", [])
-            last_msg_preview = ""
-            if messages:
-                for m in reversed(messages):
-                    content = m.get("content", "").strip()
-                    if content:
-                        last_msg_preview = content[:40] + "..." if len(content) > 40 else content
-                        break
+            preview = s.get("preview", "")
+            last_msg_preview = preview[:40] + "..." if len(preview) > 40 else preview
 
             table.add_row(
                 str(idx + 1),

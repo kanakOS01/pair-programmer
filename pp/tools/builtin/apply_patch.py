@@ -1,8 +1,9 @@
-from typing import List
+from pathlib import Path
+from typing import Any, List
 
 from pydantic import BaseModel, Field
 
-from pp.domain import FileDiff, ToolInvocation, ToolResult, ToolType
+from pp.domain import FileDiff, ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import resolve_path_safe
 
@@ -30,6 +31,9 @@ class ApplyPatchTool(Tool):
     )
     type = ToolType.WRITE
     schema = ApplyPatchParams
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        return ToolEffects(paths=(Path(params.get("path", ".")),))
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ApplyPatchParams(**invocation.params)

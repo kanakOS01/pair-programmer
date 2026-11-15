@@ -1,10 +1,24 @@
 import asyncio
+import json
+from collections.abc import Sequence
 from typing import Any, AsyncGenerator, override
 
 from openai import APIConnectionError, APIError, APIStatusError, AsyncOpenAI, RateLimitError
 
 from pp.config import Config
-from pp.domain import LLMEvent, LLMEventType, TextDelta, TokenUsage, ToolCall, ToolCallDelta
+from pp.domain import (
+    AssistantTurn,
+    Entry,
+    LLMEvent,
+    LLMEventType,
+    Summary,
+    TextDelta,
+    TokenUsage,
+    ToolCall,
+    ToolCallDelta,
+    ToolResultEntry,
+    UserMessage,
+)
 from pp.llm import BaseLLM
 
 
@@ -31,15 +45,16 @@ class OpenRouterLLM(BaseLLM):
     @override
     async def generate(
         self,
-        messages: list[dict[str, Any]],
+        entries: Sequence[Entry],
         tools: list[dict[str, Any]] | None,
+        system_prompt: str | None = None,
         stream: bool = True,
     ) -> AsyncGenerator[LLMEvent, None]:
         client = self.get_client()
 
         kwargs = {
             "model": self.cfg.model_name,
-            "messages": messages,
+            "messages": to_openai_messages(entries, system_prompt),
             "temperature": self.cfg.temperature,
         }
 
@@ -217,3 +232,27 @@ class OpenRouterLLM(BaseLLM):
             )
 
         return LLMEvent.stream_done(finish_reason=choice.finish_reason, usage=usage, text_delta=text_delta, tool_calls=tool_calls)
+
+
+def to_openai_messages(entries: Sequence[Entry], system_prompt: str | None = None) -> list[dict[str, Any]]:
+    """Convert conversation history entries to the OpenAI chat-message format."""
+    messages: list[dict[str, Any]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+
+    for entry in entries:
+        if isinstance(entry, UserMessage):
+            messages.append({"role": "user", "content": entry.text})
+        elif isinstance(entry, AssistantTurn):
+            message: dict[str, Any] = {"role": "assistant", "content": entry.text or None}
+            if entry.tool_calls:
+                message["tool_calls"] = [
+                    {"id": call.call_id, "type": "function", "function": {"name": call.name, "arguments": json.dumps(call.args)}}
+                    for call in entry.tool_calls
+                ]
+            messages.append(message)
+        elif isinstance(entry, ToolResultEntry):
+            messages.append({"role": "tool", "tool_call_id": entry.call_id, "content": entry.content})
+        elif isinstance(entry, Summary):
+            messages.append({"role": "system", "content": f"Summary of previous conversation:\n{entry.text}"})
+    return messages

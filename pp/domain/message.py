@@ -1,25 +1,31 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+
+from pp.domain.llm import ToolCall
 
 
-@dataclass
-class Message:
-    role: str
+@dataclass(frozen=True)
+class UserMessage:
+    text: str
+
+
+@dataclass(frozen=True)
+class AssistantTurn:
+    text: str
+    tool_calls: tuple[ToolCall, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class ToolResultEntry:
+    call_id: str
     content: str
-    token_count: int | None = None
-    tool_call_id: str | None = None
-    tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
-    def to_dict(self) -> dict[str, Any]:
-        res: dict[str, Any] = {"role": self.role}
 
-        if self.tool_call_id:
-            res["tool_call_id"] = self.tool_call_id
+@dataclass(frozen=True)
+class Summary:
+    text: str
 
-        if self.tool_calls:
-            res["tool_calls"] = self.tool_calls
 
-        if self.content:
-            res["content"] = self.content
-
-        return res
+# One item in the conversation history.
+Entry = UserMessage | AssistantTurn | ToolResultEntry | Summary

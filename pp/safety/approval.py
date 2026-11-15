@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import inspect
 import logging
 import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from pp.config.config import ApprovalPolicy, Config
-from pp.domain import ToolConfirmation
+from pp.domain import ToolEffects
 
 if TYPE_CHECKING:
     from pp.tools.base import Tool
@@ -26,7 +25,6 @@ class ApprovalDecision(str, Enum):
 @dataclass
 class ApprovalContext:
     tool_name: str
-    params: dict[str, Any] = field(default_factory=dict)
     mutability: bool = False
     affected_paths: list[Path] = field(default_factory=list)
     command: str | None = None
@@ -146,50 +144,13 @@ class ApprovalChecker:
         return ApprovalDecision.APPROVED
 
 
-class ApprovalManager:
-    def __init__(
-        self,
-        config: Config,
-        confirmation_callback: Callable[[ToolConfirmation], bool | Awaitable[bool]] | None = None,
-    ) -> None:
-        self.config = config
-        self.confirmation_callback = confirmation_callback
-        self.checker = ApprovalChecker(config)
-
-    def create_context(self, tool: Tool, params: dict[str, Any]) -> ApprovalContext:
-        command = params.get("CommandLine") or params.get("command")
-        mutability = tool.is_mutating()
-        tool_type = tool.type.value if hasattr(tool, "type") and hasattr(tool.type, "value") else None
-
-        affected_paths: list[Path] = []
-        for key in ["TargetFile", "AbsolutePath", "DirectoryPath", "SearchPath", "path"]:
-            if key in params:
-                val = params[key]
-                if isinstance(val, (str, Path)):
-                    affected_paths.append(Path(val))
-                elif isinstance(val, list):
-                    for item in val:
-                        if isinstance(item, (str, Path)):
-                            affected_paths.append(Path(item))
-
-        # Check for dangerous command tokens
-        is_danger = bool(command) and _is_dangerous_command(str(command))
-
-        return ApprovalContext(
-            tool_name=tool.name,
-            params=params,
-            mutability=mutability,
-            affected_paths=affected_paths,
-            command=command,
-            is_danger=is_danger,
-            tool_type=tool_type,
-        )
-
-    async def request_confirmation(self, confirmation: ToolConfirmation) -> bool:
-        if self.confirmation_callback is None:
-            return True
-
-        res = self.confirmation_callback(confirmation)
-        if inspect.isawaitable(res):
-            return await res
-        return res
+def approval_context(tool: Tool, effects: ToolEffects) -> ApprovalContext:
+    """Build the approval context for one tool call from the effects that the tool declared."""
+    return ApprovalContext(
+        tool_name=tool.name,
+        mutability=tool.is_mutating(),
+        affected_paths=list(effects.paths),
+        command=effects.command,
+        is_danger=bool(effects.command) and _is_dangerous_command(str(effects.command)),
+        tool_type=tool.type.value,
+    )

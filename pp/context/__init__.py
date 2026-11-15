@@ -1,4 +1,3 @@
-from pp.context.compaction import CompactionLayer
-from pp.context.manager import ContextManager
+from pp.context.history import ConversationHistory
 
-__all__ = ["ContextManager", "CompactionLayer"]
+__all__ = ["ConversationHistory"]

@@ -1,6 +1,9 @@
+from pathlib import Path
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from pp.domain import ToolInvocation, ToolResult, ToolType
+from pp.domain import ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import is_binary_file, resolve_path_safe
 from pp.utils.text import count_tokens, truncate_text
@@ -21,6 +24,9 @@ class ReadFileTool(Tool):
     )
     type = ToolType.READ
     schema = ReadFileParams
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        return ToolEffects(paths=(Path(params.get("path", ".")),))
 
     MAX_FILE_SIZE_BYTES = 1024 * 1024 * 10  # 10 mb
     ONE_MEGA_BYTE = 1024 * 1024

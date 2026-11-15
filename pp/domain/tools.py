@@ -48,6 +48,14 @@ class ToolResult:
         return f"Error: {self.error}\n\nOutput:\n{self.output}"
 
 
+@dataclass(frozen=True)
+class ToolEffects:
+    """What a tool call will touch, as the tool declares it. Approval decides from these effects."""
+
+    paths: tuple[Path, ...] = ()
+    command: str | None = None
+
+
 @dataclass
 class ToolConfirmation:
     tool_name: str

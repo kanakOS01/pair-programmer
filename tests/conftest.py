@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, AsyncGenerator
 
@@ -7,7 +8,7 @@ import pytest
 
 import pp.utils.text
 from pp.config import Config
-from pp.domain import LLMEvent, LLMEventType, TextDelta, TokenUsage, ToolCall, ToolInvocation
+from pp.domain import Entry, LLMEvent, LLMEventType, TextDelta, TokenUsage, ToolCall, ToolInvocation
 
 
 @pytest.fixture(autouse=True)
@@ -59,12 +60,16 @@ class FakeLLM:
     def __init__(self, turns: list[list[LLMEvent]] | None = None, summary: str = "SUMMARY") -> None:
         self.turns = list(turns or [])
         self.summary = summary
-        self.calls: list[list[dict[str, Any]]] = []
+        self.calls: list[Sequence[Entry]] = []
 
     async def generate(
-        self, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None, stream: bool = True
+        self,
+        entries: Sequence[Entry],
+        tools: list[dict[str, Any]] | None,
+        system_prompt: str | None = None,
+        stream: bool = True,
     ) -> AsyncGenerator[LLMEvent, None]:
-        self.calls.append(messages)
+        self.calls.append(entries)
         if tools is None:
             yield LLMEvent.stream_done(finish_reason="stop", usage=TokenUsage(), text_delta=TextDelta(text=self.summary))
             return

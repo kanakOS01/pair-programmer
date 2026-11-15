@@ -4,10 +4,11 @@ import os
 import re
 import signal
 import sys
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from pp.domain import ToolInvocation, ToolResult, ToolType
+from pp.domain import ToolEffects, ToolInvocation, ToolResult, ToolType
 from pp.tools.base import Tool
 from pp.utils.paths import resolve_path_safe
 
@@ -39,6 +40,10 @@ class ShellTool(Tool):
         re.compile(r"\b(shutdown|reboot|halt|poweroff)\b"),
         re.compile(r"\binit\s+[06]\b"),
     ]
+
+    def effects(self, params: dict[str, Any]) -> ToolEffects:
+        # No paths: a shell command can touch any file, so its cwd must not count as a safe path.
+        return ToolEffects(command=params["command"])
 
     async def execute(self, invocation: ToolInvocation) -> ToolResult:
         params = ShellToolParams(**invocation.params)

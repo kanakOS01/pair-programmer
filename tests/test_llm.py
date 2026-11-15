@@ -6,7 +6,7 @@ from openai import APIConnectionError, BadRequestError, InternalServerError, Rat
 
 import pp.llm.open_router as open_router
 from pp.config import Config
-from pp.domain import LLMEvent, LLMEventType, TextDelta
+from pp.domain import LLMEvent, LLMEventType, TextDelta, UserMessage
 from pp.llm import OpenRouterLLM
 
 REQUEST = httpx.Request("POST", "http://test")
@@ -49,7 +49,7 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch):
 
 
 async def collect(llm: OpenRouterLLM) -> list[LLMEvent]:
-    return [event async for event in llm.generate([{"role": "user", "content": "x"}], None)]
+    return [event async for event in llm.generate([UserMessage("x")], None)]
 
 
 @pytest.mark.parametrize(

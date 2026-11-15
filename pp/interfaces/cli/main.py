@@ -8,7 +8,6 @@ import typer
 
 from pp.agents import CodingAgent
 from pp.config import Config, load_config
-from pp.context import CompactionLayer
 from pp.domain import AgentEventType, ToolConfirmation
 from pp.interfaces.cli.tui import TUI, get_console
 
@@ -53,7 +52,7 @@ class CLI:
     async def _run_once(self, prompt: str, session_id: str | None = None):
         async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
-            agent.session.approval_manager.confirmation_callback = self._confirm_tool_call
+            agent.session.tool_executor.confirm = self._confirm_tool_call
             if session_id:
                 try:
                     agent.session.load(session_id)
@@ -65,7 +64,7 @@ class CLI:
     async def _run_interactive(self, session_id: str | None = None):
         async with CodingAgent(config=self.config) as agent:
             self.coding_agent = agent
-            agent.session.approval_manager.confirmation_callback = self._confirm_tool_call
+            agent.session.tool_executor.confirm = self._confirm_tool_call
             if session_id:
                 try:
                     agent.session.load(session_id)
@@ -325,18 +324,11 @@ class CLI:
 
         self.tui.show_compact_start(keep_last_n)
         try:
-            compaction_layer = CompactionLayer(
-                self.coding_agent.session.context_manager,
-                self.coding_agent.session.llm,
-            )
-            # Run compaction and await it
-            summary, usage = await compaction_layer.compact(keep_last_n)
-            if not summary:
+            result = await self.coding_agent.session.compact(keep_last_n)
+            if result is None:
                 self.tui.show_compact_no_op()
             else:
-                if usage:
-                    self.coding_agent.session.accumulate_usage(usage)
-                self.coding_agent.session.save()
+                summary, usage = result
                 self.tui.show_compact_success(summary, usage)
         except Exception as e:
             self.tui.show_command_error(f"Compaction failed: {e}")
@@ -376,8 +368,6 @@ class CLI:
             if success:
                 new_val = self._get_config_attr(key)
                 self.tui.show_config_success(key, new_val)
-                if self.coding_agent:
-                    self.coding_agent.session.context_manager.update_system_prompt()
             else:
                 self.tui.show_config_error(f"Failed to update configuration key: {key}")
 
@@ -389,8 +379,6 @@ class CLI:
 
         self.config.model_name = args
         self.tui.show_model_success(args)
-        if self.coding_agent:
-            self.coding_agent.session.context_manager.update_system_prompt()
 
     def _handle_approval_command(self, args: str):
         from pp.config.config import ApprovalPolicy
@@ -412,8 +400,6 @@ class CLI:
         if matched:
             self.config.approval.policy = matched
             self.tui.show_approval_success(matched.value)
-            if self.coding_agent:
-                self.coding_agent.session.context_manager.update_system_prompt()
         else:
             self.tui.show_command_error(
                 f"Invalid approval policy: {args}. Must be one of: {', '.join(p.value for p in ApprovalPolicy)}"

@@ -1,8 +1,8 @@
-from pp.safety.approval import ApprovalChecker, ApprovalContext, ApprovalDecision, ApprovalManager
+from pp.safety.approval import ApprovalChecker, ApprovalContext, ApprovalDecision, approval_context
 
 __all__ = [
     "ApprovalDecision",
     "ApprovalContext",
     "ApprovalChecker",
-    "ApprovalManager",
+    "approval_context",
 ]
