@@ -30,18 +30,13 @@ DEFAULT_BASE_URLS: dict[Provider, str] = {
 
 
 class ModelConfig(BaseModel):
-    # Validate on assignment, so that /config and /model changes are checked and converted too.
     model_config = ConfigDict(validate_assignment=True)
 
     provider: Provider = Provider.OPENAI
     name: str = "gpt-6.1-sol"
-    # None: do not send a temperature. Reasoning models can reject the parameter.
     temp: float | None = Field(default=None, ge=0.0, le=2.0)
-    # OpenAI only. None: use the model's default effort.
     reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
     context_window: int = Field(256_000)
-    # Seconds to wait for data from the API: for the connection, and between parts of a streamed answer.
-    # Reasoning models can think for a long time before they send anything, so keep it generous.
     timeout: float = Field(default=300.0, gt=0)
 
 
@@ -83,8 +78,6 @@ class MCPServerConfig(BaseModel):
     command: str
     args: list[str] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
-    # Seconds to wait for the server to answer its first request. Increase it if the server
-    # downloads packages when it starts (for example with uvx).
     startup_timeout: float = Field(default=15.0, gt=0)
 
 
